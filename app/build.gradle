@@ -3,6 +3,12 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def ciRunNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+def devVersionCode = 420000 + ciRunNumber
+
+def devVersionName = "0.4.2-dev.${ciRunNumber}"
+
 android {
     namespace 'com.desarrollamo.storeamo'
     compileSdk 34
@@ -11,8 +17,8 @@ android {
         applicationId "com.desarrollamo.storeamo"
         minSdk 26
         targetSdk 34
-        versionCode 41
-        versionName "0.4.1-dev"
+        versionCode devVersionCode
+        versionName devVersionName
     }
 
     buildTypes {
