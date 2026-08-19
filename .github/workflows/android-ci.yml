@@ -56,5 +56,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO 0.4.3 · versión numerada para probar actualizaciones in-place con firma de desarrollo fijada." \
+            --notes "StoreAMO 0.4.3 · mantenimiento del catálogo: evita respuestas antiguas de caché al buscar nuevas apps y Releases, manteniendo la firma canónica para actualizaciones in-place." \
             --prerelease
