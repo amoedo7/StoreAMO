@@ -2,12 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Optional, user-granted permission used only when the user chooses to run a verified script through Termux. -->
+    <!-- User-granted and only used when StoreAMO eventually executes a verified script through Termux. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
-    <!-- Keep package visibility narrow: StoreAMO only needs to detect integrations it actually supports. -->
+    <!-- No QUERY_ALL_PACKAGES: StoreAMO only asks whether Termux exists. -->
     <queries>
-        <package android:name="com.desarrollamo.storeamo" />
         <package android:name="com.termux" />
     </queries>
 
