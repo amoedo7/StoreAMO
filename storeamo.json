@@ -4,14 +4,16 @@
   "name": "StoreAMO",
   "tagline": "La tienda del ecosistema DesarrollAMO.",
   "description": "Descubre, verifica, descarga y actualiza aplicaciones del ecosistema DesarrollAMO desde un catálogo independiente del código de la tienda.",
-  "category": "Herramientas",
-  "featured": true,
+  "category": "Sistema",
+  "audience": "system",
+  "featured": false,
   "status": "development",
   "supported_platforms": ["android"],
   "store": {
     "homepage": "https://github.com/amoedo7/StoreAMO",
     "privacy_url": "https://github.com/amoedo7/StoreAMO/blob/main/SECURITY.md",
-    "screenshots": []
+    "screenshots": [],
+    "notes": "StoreAMO no se presenta como una app normal dentro de sí misma; su versión instalada vive en Ajustes/Actualizaciones."
   },
   "release": {
     "provider": "github",
