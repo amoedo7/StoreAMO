@@ -26,13 +26,18 @@ jobs:
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
-      - name: Show package identity
+      - name: Prepare versioned artifact
         run: |
-          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -n1)
-          echo "APK=$APK"
-          echo "versionCode is generated from GITHUB_RUN_NUMBER so each successful CI build can update the previous one."
+          VERSION="0.4.2-dev.${GITHUB_RUN_NUMBER}-debug"
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/StoreAMO-${VERSION}.apk"
+          sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
+          echo "PACKAGE=com.desarrollamo.storeamo.debug"
+          echo "VERSION=${VERSION}"
+          echo "VERSION_CODE=$((420000 + GITHUB_RUN_NUMBER))"
+          echo "APK=dist/StoreAMO-${VERSION}.apk"
       - name: Upload debug APK
         uses: actions/upload-artifact@v6
         with:
           name: StoreAMO-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/*
