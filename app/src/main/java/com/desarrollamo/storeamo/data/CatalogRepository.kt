@@ -12,6 +12,7 @@ object CatalogRepository {
     const val CATALOG_URL = "https://raw.githubusercontent.com/amoedo7/StoreAMO-Catalog/main/catalog.json"
     private const val PREFS = "storeamo_catalog_cache"
     private const val CACHE_KEY = "last_known_good_catalog"
+    private const val FETCHED_AT_KEY = "last_fetch_ms"
 
     fun fetch(): StoreCatalog = parse(fetchRemote())
 
@@ -22,6 +23,7 @@ object CatalogRepository {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(CACHE_KEY, raw)
+                .putLong(FETCHED_AT_KEY, System.currentTimeMillis())
                 .apply()
             parsed
         }.getOrElse { remoteError ->
@@ -32,13 +34,21 @@ object CatalogRepository {
         }
     }
 
+    fun lastSuccessfulFetch(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(FETCHED_AT_KEY, 0L)
+
     private fun fetchRemote(): String {
-        val connection = URL(CATALOG_URL).openConnection() as HttpURLConnection
+        // A timestamp prevents an intermediate CDN/proxy from returning an older
+        // raw GitHub catalog immediately after a new app Release is discovered.
+        val requestUrl = "$CATALOG_URL?storeamo_ts=${System.currentTimeMillis()}"
+        val connection = URL(requestUrl).openConnection() as HttpURLConnection
         connection.connectTimeout = 8_000
         connection.readTimeout = 8_000
         connection.requestMethod = "GET"
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "StoreAMO/0.4")
+        connection.setRequestProperty("User-Agent", "StoreAMO/0.4.3")
+        connection.setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0")
+        connection.setRequestProperty("Pragma", "no-cache")
         connection.useCaches = false
         try {
             val status = connection.responseCode
