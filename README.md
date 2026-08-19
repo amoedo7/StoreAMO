@@ -48,17 +48,15 @@ Las descargas Android se realizan por HTTPS y el APK se compara contra su SHA-25
 
 ## Actualizaciones
 
-Los APK de una misma línea deben conservar package id, certificado de firma y un `versionCode` creciente. El CI de desarrollo de StoreAMO usa una identidad reproducible y `versionCode` monotónico para poder probar actualización sobre la instalación anterior sin volver a desinstalar en cada build.
-
-StoreAMO V3 usa `PackageInstaller` para entregar la actualización al instalador oficial de Android, evita el selector genérico “Abrir con” y valida identidad del APK antes de solicitar la instalación.
+La línea `0.4.3.N` usa sólo números visibles, un `versionCode` creciente y una identidad de firma de desarrollo fijada explícitamente. StoreAMO V3 usa `PackageInstaller`, evita el selector genérico “Abrir con” y valida identidad del APK antes de solicitar la instalación.
 
 ### Self-update probe
 
-Este cambio genera una nueva build de desarrollo de StoreAMO para probar el ciclo completo `GitHub Release → StoreAMO detecta → descarga → verifica → actualizar encima`.
+La línea 0.4.3 se prueba con dos builds consecutivas: una base limpia y una posterior que debe aparecer sola en **Actualiz.**. El objetivo es demostrar `GitHub Release → StoreAMO detecta → descarga → verifica → actualizar encima` sin volver a Termux.
 
 ## Scripts AMO
 
-StoreAMO detecta únicamente `com.termux` como integración explícita. La futura galería de scripts se alimentará de piezas revisadas que comiencen en `IdeAMO`, con descripción, origen e integridad antes de ofrecer ejecución.
+StoreAMO detecta únicamente `com.termux` como integración explícita. La galería de scripts se alimenta de piezas revisadas que comienzan en `IdeAMO`, con descripción, origen e integridad antes de ofrecer ejecución.
 
 ## Repos relacionados
 
