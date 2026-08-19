@@ -19,38 +19,42 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Prepare reproducible debug signing key
+      - name: Prepare canonical StoreAMO signing key
         run: |
           mkdir -p "$HOME/.android"
           base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
-      - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Build StoreAMO APK
+        env:
+          STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
+        run: |
+          cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
+          gradle assembleDebug --stacktrace
       - name: Prepare versioned artifact
         run: |
-          VERSION="0.4.2-dev.${GITHUB_RUN_NUMBER}-debug"
+          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/StoreAMO-${VERSION}.apk"
           sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
           echo "PACKAGE=com.desarrollamo.storeamo.debug"
           echo "VERSION=${VERSION}"
-          echo "VERSION_CODE=$((420000 + GITHUB_RUN_NUMBER))"
+          echo "VERSION_CODE=$((430000 + GITHUB_RUN_NUMBER))"
           echo "APK=dist/StoreAMO-${VERSION}.apk"
-      - name: Upload debug APK
+      - name: Upload StoreAMO APK
         uses: actions/upload-artifact@v6
         with:
           name: StoreAMO-debug
           path: dist/*
-      - name: Publish self-update dev release
+      - name: Publish self-update release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="0.4.2-dev.${GITHUB_RUN_NUMBER}-debug"
+          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
           TAG="v${VERSION}"
           gh release create "$TAG" dist/StoreAMO-${VERSION}.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "Build de desarrollo firmado de forma reproducible para probar actualización dentro de StoreAMO." \
+            --notes "StoreAMO 0.4.3 · versión numerada para probar actualizaciones in-place con firma de desarrollo fijada." \
             --prerelease
