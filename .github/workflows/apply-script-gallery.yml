@@ -1,0 +1,33 @@
+name: apply-script-gallery
+
+on:
+  push:
+    paths:
+      - ci/apply_script_gallery.py
+      - .github/workflows/apply-script-gallery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Wire script gallery into StoreAMO
+        run: python ci/apply_script_gallery.py
+      - name: Commit generated source change
+        run: |
+          if git diff --quiet -- app/src/main/java/com/desarrollamo/storeamo/MainActivityV2.kt; then
+            echo 'No source change needed'
+            exit 0
+          fi
+          git config user.name 'StoreAMO Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/com/desarrollamo/storeamo/MainActivityV2.kt
+          git commit -m 'feat: wire verified Termux scripts into StoreAMO'
+          git push
