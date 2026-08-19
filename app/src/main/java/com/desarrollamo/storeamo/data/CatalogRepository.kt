@@ -13,13 +13,8 @@ object CatalogRepository {
     private const val PREFS = "storeamo_catalog_cache"
     private const val CACHE_KEY = "last_known_good_catalog"
 
-    /** Network-only loader kept for compatibility with the current UI. */
     fun fetch(): StoreCatalog = parse(fetchRemote())
 
-    /**
-     * Preferred loader: caches only a successfully parsed catalog and falls back
-     * to that last-known-good copy when the network is unavailable.
-     */
     fun fetch(context: Context): StoreCatalog {
         return runCatching {
             val raw = fetchRemote()
@@ -98,6 +93,7 @@ object CatalogRepository {
                         description = o.optString("description"),
                         category = o.optString("category", "Apps"),
                         featured = o.optBoolean("featured", false),
+                        audience = o.optString("audience", "public"),
                         status = o.optString("status", "development"),
                         supportedPlatforms = supported,
                         repository = o.optString("repository").takeIf { it.startsWith("https://") },
