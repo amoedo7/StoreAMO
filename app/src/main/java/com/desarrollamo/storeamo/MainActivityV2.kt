@@ -258,7 +258,7 @@ fun StoreAmoV2() {
                     items(publicApps.take(8), key = { it.id }) { app -> AppCardV2(app, context, verifiedOnly) { selected = app } }
 
                     item {
-                        if (termuxInstalled) TermuxReadyCard() else TermuxInstallCard(
+                        if (termuxInstalled) TermuxScriptGalleryCard(context) { notice = it } else TermuxInstallCard(
                             onFdroid = { openUrlV2(context, TERMUX_FDROID) },
                             onPlay = { openUrlV2(context, TERMUX_PLAY) },
                         )
