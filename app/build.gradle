@@ -4,10 +4,9 @@ plugins {
 }
 
 def ciRunNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
-
 def devVersionCode = 420000 + ciRunNumber
-
-def devVersionName = "0.4.2-dev.${ciRunNumber}"
+def devVersionName = "0.4.3-dev.${ciRunNumber}"
+def debugKeystorePath = System.getenv('STOREAMO_DEBUG_KEYSTORE') ?: "${System.properties['user.home']}/.android/debug.keystore"
 
 android {
     namespace 'com.desarrollamo.storeamo'
@@ -21,10 +20,22 @@ android {
         versionName devVersionName
     }
 
+    signingConfigs {
+        debug {
+            // Do not rely on AGP's implicit debug identity. CI decodes the
+            // canonical development keystore and points this configuration at it.
+            storeFile file(debugKeystorePath)
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
+            signingConfig signingConfigs.debug
         }
         release {
             minifyEnabled false
