@@ -21,6 +21,7 @@ data class StoreApp(
     val description: String,
     val category: String,
     val featured: Boolean,
+    val audience: String,
     val status: String,
     val supportedPlatforms: List<String>,
     val repository: String?,
@@ -36,7 +37,7 @@ data class StoreCatalog(
 enum class StoreTab(val label: String, val glyph: String) {
     HOME("Inicio", "◆"),
     APPS("Apps", "▦"),
-    UPDATES("Actualizaciones", "↻"),
+    UPDATES("Actualiz.", "↻"),
     LIBRARY("Biblioteca", "▣"),
-    SETTINGS("Ajustes", "●"),
+    SETTINGS("Ajustes", "⚙"),
 }
