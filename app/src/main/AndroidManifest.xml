@@ -30,6 +30,10 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <receiver
+            android:name=".util.InstallResultReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivityV3"
             android:exported="true">
