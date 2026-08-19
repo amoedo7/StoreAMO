@@ -5,9 +5,10 @@
     <!-- User-granted and only used when StoreAMO eventually executes a verified script through Termux. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
-    <!-- No QUERY_ALL_PACKAGES: StoreAMO only asks whether Termux exists. -->
+    <!-- No QUERY_ALL_PACKAGES: StoreAMO only asks for integrations it explicitly supports. -->
     <queries>
         <package android:name="com.termux" />
+        <package android:name="com.desarrollamo.plataformamo.dev" />
     </queries>
 
     <application
@@ -30,7 +31,7 @@
         </provider>
 
         <activity
-            android:name=".MainActivity"
+            android:name=".MainActivityV2"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
