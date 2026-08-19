@@ -10,47 +10,56 @@
 
 ---
 
-StoreAMO deja atrás el enfoque de “escanear APK/ZIP del teléfono”. La nueva arquitectura está pensada como una tienda real del ecosistema:
+StoreAMO es la puerta de entrada a las aplicaciones, herramientas y futuros scripts del ecosistema DesarrollAMO.
 
 ```text
-StoreAMO Catalog
+repo de cada app
       ↓
-detectar dispositivo
+storeamo.json
       ↓
-mostrar apps compatibles primero
+GitHub Release
       ↓
-ficha + versión + verificación
+StoreAMO-Catalog
+      ↓
+StoreAMO
       ↓
 OBTENER / ACTUALIZAR / ABRIR
-      ↓
-VER MÁS → otras plataformas
 ```
 
-## Diseño
+## V2 Android
 
-Tomamos de las tiendas maduras las ideas que funcionan —inicio, búsqueda, categorías, actualizaciones, biblioteca y configuración— pero **no copiamos Google Play**. StoreAMO usa branding propio de DesarrollAMO:
+La interfaz V2 prioriza la función de tienda sobre el repositorio de código:
 
-- azul noche `#06101C`;
-- cyan `#67D2FF`;
-- rosa `#F16AB5`;
-- violeta `#8C74FF`;
-- superficies oscuras y jerarquía visual limpia.
+- **Equipo DesarrollAMO** separado del catálogo público;
+- botón `Obtener`, `Actualizar` o `Abrir` cuando existe un artefacto Android;
+- StoreAMO no aparece como una aplicación normal dentro de sí misma;
+- estado de StoreAMO dentro de Ajustes/Actualizaciones;
+- estilos `Sistema`, `Dark`, `Light`, `Estetic`, `Blanco y negro`, `OLED`, `Ocean` y `Sunset`;
+- detección acotada de Termux sin `QUERY_ALL_PACKAGES`;
+- recomendación de Termux/F-Droid cuando no está instalado;
+- acceso voluntario a CobrAMO desde `Apoyar DesarrollAMO`.
 
-## Seguridad y privacidad
+## Confianza
 
-La nueva base elimina del corazón del producto los permisos de inventario masivo del StoreAMO anterior. No usa `MANAGE_EXTERNAL_STORAGE` ni `QUERY_ALL_PACKAGES` para navegar el catálogo. Las descargas públicas no necesitan token de GitHub.
+Una app puede estar en `development`, `candidate` o `verified`. StoreAMO no confunde “está publicada” con “ya fue verificada”. El usuario puede mantener activado **Sólo versiones verificadas** o entrar deliberadamente en modo de prueba para candidatos.
 
-La instalación de APK sigue requiriendo la confirmación normal de Android. StoreAMO no intenta instalar silenciosamente.
+Las descargas Android se realizan por HTTPS y el APK se compara contra su SHA-256 antes de abrir el instalador del sistema.
+
+## Actualizaciones
+
+Los APK de una misma línea deben conservar package id, certificado de firma y un `versionCode` creciente. El CI de desarrollo de StoreAMO usa una identidad reproducible y versionCode monotónico para poder probar actualización sobre la instalación anterior sin volver a desinstalar en cada build.
+
+## Scripts AMO
+
+StoreAMO detecta únicamente `com.termux` como integración explícita. La futura galería de scripts se alimentará de piezas revisadas que comiencen en `IdeAMO`, con descripción, origen e integridad antes de ofrecer ejecución.
 
 ## Repos relacionados
 
-- [`StoreAMO-Catalog`](https://github.com/amoedo7/StoreAMO-Catalog) — fuente pública de apps y artefactos.
-- [`StoreAMO-Verify`](https://github.com/amoedo7/StoreAMO-Verify) — evidencia e integridad antes de marcar una release como verificada.
-- [`StoreAMO-Web`](https://github.com/amoedo7/StoreAMO-Web) — la misma tienda desde un navegador.
-
-## Estado
-
-**En reconstrucción.** Los ZIP/APK antiguos se usan como referencia técnica, pero no se publican como releases oficiales. La primera release pública será una versión revisada y verificable.
+- [`StoreAMO-Catalog`](https://github.com/amoedo7/StoreAMO-Catalog) — descubrimiento desde `storeamo.json` y Releases.
+- [`StoreAMO-Verify`](https://github.com/amoedo7/StoreAMO-Verify) — controles de evidencia e integridad.
+- [`StoreAMO-Web`](https://github.com/amoedo7/StoreAMO-Web) — experiencia web multiplataforma.
+- [`StoreAMO-Install`](https://github.com/amoedo7/StoreAMO-Install) — comandos e instalación multiplataforma.
+- [`IdeAMO`](https://github.com/amoedo7/IdeAMO) — ideas, scripts y prototipos todavía sin repo oficial.
 
 ---
 
