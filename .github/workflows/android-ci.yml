@@ -16,6 +16,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Prepare reproducible debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
       - name: Upload debug APK
