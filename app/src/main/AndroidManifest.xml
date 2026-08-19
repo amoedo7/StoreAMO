@@ -40,6 +40,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".InstallFlowActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <activity
             android:name=".MainActivityV3"
             android:exported="true">
             <intent-filter>
