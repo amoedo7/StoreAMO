@@ -1,0 +1,34 @@
+{
+  "schema": "storeamo.app.v1",
+  "id": "storeamo",
+  "name": "StoreAMO",
+  "tagline": "La tienda del ecosistema DesarrollAMO.",
+  "description": "Descubre, verifica, descarga y actualiza aplicaciones del ecosistema DesarrollAMO desde un catálogo independiente del código de la tienda.",
+  "category": "Herramientas",
+  "featured": true,
+  "status": "development",
+  "supported_platforms": ["android"],
+  "store": {
+    "homepage": "https://github.com/amoedo7/StoreAMO",
+    "privacy_url": "https://github.com/amoedo7/StoreAMO/blob/main/SECURITY.md",
+    "screenshots": []
+  },
+  "release": {
+    "provider": "github",
+    "repo": "amoedo7/StoreAMO",
+    "channel": "stable",
+    "assets": [
+      {
+        "platform": "android",
+        "pattern": "^StoreAMO-.*\\.apk$",
+        "format": "apk",
+        "application_id": "com.desarrollamo.storeamo",
+        "min_os": "Android 8.0"
+      }
+    ]
+  },
+  "verification": {
+    "policy": "storeamo-default-v1",
+    "required_checks": ["sha256", "application-id", "signature", "permissions", "tests"]
+  }
+}
