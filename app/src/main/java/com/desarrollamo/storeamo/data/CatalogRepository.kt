@@ -1,5 +1,6 @@
 package com.desarrollamo.storeamo.data
 
+import android.content.Context
 import com.desarrollamo.storeamo.model.StoreApp
 import com.desarrollamo.storeamo.model.StoreArtifact
 import com.desarrollamo.storeamo.model.StoreCatalog
@@ -9,8 +10,32 @@ import java.net.URL
 
 object CatalogRepository {
     const val CATALOG_URL = "https://raw.githubusercontent.com/amoedo7/StoreAMO-Catalog/main/catalog.json"
+    private const val PREFS = "storeamo_catalog_cache"
+    private const val CACHE_KEY = "last_known_good_catalog"
 
-    fun fetch(): StoreCatalog {
+    /**
+     * Fetches the public catalog and stores only a successfully parsed copy.
+     * If the network is unavailable, StoreAMO falls back to the last-known-good
+     * catalog instead of presenting an empty store.
+     */
+    fun fetch(context: Context): StoreCatalog {
+        return runCatching {
+            val raw = fetchRemote()
+            val parsed = parse(raw)
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(CACHE_KEY, raw)
+                .apply()
+            parsed
+        }.getOrElse { remoteError ->
+            val cached = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(CACHE_KEY, null)
+                ?: throw remoteError
+            parse(cached)
+        }
+    }
+
+    private fun fetchRemote(): String {
         val connection = URL(CATALOG_URL).openConnection() as HttpURLConnection
         connection.connectTimeout = 8_000
         connection.readTimeout = 8_000
@@ -21,8 +46,7 @@ object CatalogRepository {
         try {
             val status = connection.responseCode
             require(status in 200..299) { "catalog HTTP $status" }
-            val raw = connection.inputStream.bufferedReader().use { it.readText() }
-            return parse(raw)
+            return connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
         }
