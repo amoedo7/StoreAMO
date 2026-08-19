@@ -13,10 +13,12 @@ object CatalogRepository {
     private const val PREFS = "storeamo_catalog_cache"
     private const val CACHE_KEY = "last_known_good_catalog"
 
+    /** Network-only loader kept for compatibility with the current UI. */
+    fun fetch(): StoreCatalog = parse(fetchRemote())
+
     /**
-     * Fetches the public catalog and stores only a successfully parsed copy.
-     * If the network is unavailable, StoreAMO falls back to the last-known-good
-     * catalog instead of presenting an empty store.
+     * Preferred loader: caches only a successfully parsed catalog and falls back
+     * to that last-known-good copy when the network is unavailable.
      */
     fun fetch(context: Context): StoreCatalog {
         return runCatching {
