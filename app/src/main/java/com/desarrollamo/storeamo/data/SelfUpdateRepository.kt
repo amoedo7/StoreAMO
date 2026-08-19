@@ -8,7 +8,7 @@ import java.net.URL
 
 object SelfUpdateRepository {
     private const val RELEASES_URL = "https://api.github.com/repos/amoedo7/StoreAMO/releases?per_page=10"
-    private val tagRegex = Regex("^v?0\\.4\\.2-dev\\.(\\d+)-debug$")
+    private val tagRegex = Regex("^v?0\\.4\\.3\\.(\\d+)$")
     private val shaRegex = Regex("^[0-9a-fA-F]{64}$")
 
     fun fetchLatest(): StoreArtifact? {
@@ -19,7 +19,7 @@ object SelfUpdateRepository {
             val tag = release.optString("tag_name")
             val match = tagRegex.matchEntire(tag) ?: continue
             val runNumber = match.groupValues[1].toIntOrNull() ?: continue
-            val versionCode = 420000 + runNumber
+            val versionCode = 430000 + runNumber
             if (versionCode <= BuildConfig.VERSION_CODE) return null
 
             val assets = release.optJSONArray("assets") ?: continue
