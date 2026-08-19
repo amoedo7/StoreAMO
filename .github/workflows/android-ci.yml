@@ -24,6 +24,8 @@ jobs:
           mkdir -p "$HOME/.android"
           base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+      - name: Validate one-tap update regression
+        run: python scripts/validate_one_tap_update.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -56,5 +58,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO 0.4.3 · mantenimiento del catálogo: evita respuestas antiguas de caché al buscar nuevas apps y Releases, manteniendo la firma canónica para actualizaciones in-place." \
+            --notes "StoreAMO 0.4.3 · actualización de un toque: OBTENER/ACTUALIZAR abre un flujo visible de progreso, verifica SHA-256 y continúa automáticamente al instalador de Android. StoreAMO ya no exige un segundo botón Instalar; Android conserva su confirmación de seguridad cuando corresponda." \
             --prerelease
