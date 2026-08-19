@@ -26,14 +26,15 @@ StoreAMO
 OBTENER / ACTUALIZAR / ABRIR
 ```
 
-## V2 Android
+## V3 Android
 
-La interfaz V2 prioriza la función de tienda sobre el repositorio de código:
+La interfaz V3 prioriza la función de tienda sobre el repositorio de código:
 
 - **Equipo DesarrollAMO** separado del catálogo público;
 - botón `Obtener`, `Actualizar` o `Abrir` cuando existe un artefacto Android;
 - StoreAMO no aparece como una aplicación normal dentro de sí misma;
 - estado de StoreAMO dentro de Ajustes/Actualizaciones;
+- sección **Lo que se viene** para proyectos todavía no instalables;
 - estilos `Sistema`, `Dark`, `Light`, `Estetic`, `Blanco y negro`, `OLED`, `Ocean` y `Sunset`;
 - detección acotada de Termux sin `QUERY_ALL_PACKAGES`;
 - recomendación de Termux/F-Droid cuando no está instalado;
@@ -47,7 +48,13 @@ Las descargas Android se realizan por HTTPS y el APK se compara contra su SHA-25
 
 ## Actualizaciones
 
-Los APK de una misma línea deben conservar package id, certificado de firma y un `versionCode` creciente. El CI de desarrollo de StoreAMO usa una identidad reproducible y versionCode monotónico para poder probar actualización sobre la instalación anterior sin volver a desinstalar en cada build.
+Los APK de una misma línea deben conservar package id, certificado de firma y un `versionCode` creciente. El CI de desarrollo de StoreAMO usa una identidad reproducible y `versionCode` monotónico para poder probar actualización sobre la instalación anterior sin volver a desinstalar en cada build.
+
+StoreAMO V3 usa `PackageInstaller` para entregar la actualización al instalador oficial de Android, evita el selector genérico “Abrir con” y valida identidad del APK antes de solicitar la instalación.
+
+### Self-update probe
+
+Este cambio genera una nueva build de desarrollo de StoreAMO para probar el ciclo completo `GitHub Release → StoreAMO detecta → descarga → verifica → actualizar encima`.
 
 ## Scripts AMO
 
