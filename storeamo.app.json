@@ -1,0 +1,18 @@
+{
+  "schema": "storeamo.app.v1",
+  "id": "storeamo",
+  "name": "StoreAMO",
+  "tagline": "Todas las aplicaciones de DesarrollAMO en un solo lugar.",
+  "description": "Catálogo, verificación, descarga e instalación del ecosistema DesarrollAMO.",
+  "category": "Herramientas",
+  "repository": "https://github.com/amoedo7/StoreAMO",
+  "supported_platforms": ["android", "web"],
+  "android": {
+    "application_id": "com.desarrollamo.storeamo",
+    "min_sdk": 26,
+    "expected_permissions": [
+      "android.permission.INTERNET",
+      "android.permission.REQUEST_INSTALL_PACKAGES"
+    ]
+  }
+}
