@@ -1,0 +1,332 @@
+name: apply-one-tap-update
+
+on:
+  push:
+    branches: [fix/one-tap-updates]
+    paths:
+      - .github/workflows/apply-one-tap-update.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/one-tap-updates
+
+      - name: Apply one-tap update UX and regression checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, got {count}')
+              return text.replace(old, new, 1)
+
+          main_path = Path('app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt')
+          main = main_path.read_text(encoding='utf-8')
+
+          main = replace_once(
+              main,
+              'import androidx.compose.material3.ModalBottomSheet\n',
+              'import androidx.compose.material3.ModalBottomSheet\nimport androidx.compose.material3.LinearProgressIndicator\n',
+              'progress import',
+          )
+
+          main = replace_once(
+              main,
+              '    var pending by remember { mutableStateOf<DownloadInstaller.Pending?>(null) }\n    var downloaded by remember { mutableStateOf<DownloadInstaller.Pending?>(null) }\n    var notice by remember { mutableStateOf<String?>(null) }\n',
+              '    var pending by remember { mutableStateOf<DownloadInstaller.Pending?>(null) }\n    var pendingProgress by remember { mutableStateOf<Int?>(null) }\n    var downloaded by remember { mutableStateOf<DownloadInstaller.Pending?>(null) }\n    var installAttemptedId by remember { mutableStateOf<Long?>(null) }\n    var notice by remember { mutableStateOf<String?>(null) }\n',
+              'download state',
+          )
+
+          old_pending = '''    LaunchedEffect(pending?.id) {
+        val current = pending ?: return@LaunchedEffect
+        notice = "Descargando ${current.artifact.version}…"
+        while (true) {
+            when (DownloadInstaller.status(context, current.id)) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    val valid = withContext(Dispatchers.IO) { DownloadInstaller.verifySha256(current.file, current.artifact.sha256) }
+                    if (valid) {
+                        downloaded = current
+                        notice = "Descarga verificada · lista para instalar"
+                    } else {
+                        current.file.delete()
+                        notice = "Bloqueada · el SHA-256 no coincide"
+                    }
+                    pending = null
+                    break
+                }
+                DownloadManager.STATUS_FAILED -> { notice = "La descarga falló"; pending = null; break }
+                else -> delay(800)
+            }
+        }
+    }
+
+    LaunchedEffect(resumeToken) {
+        val ready = downloaded
+        if (ready != null && installedVersionV3(context, ready.artifact.applicationId) == ready.artifact.version) {
+            downloaded = null
+            notice = "Instalada correctamente · no detectamos actualizaciones para esta app."
+            selfLoading = true
+        } else if (notice?.startsWith("Permití instalar apps") == true && ready == null) {
+            notice = null
+        }
+    }
+'''
+          new_pending = '''    LaunchedEffect(pending?.id) {
+        val current = pending ?: return@LaunchedEffect
+        pendingProgress = 0
+        notice = "Descargando ${current.artifact.version}…"
+        while (true) {
+            pendingProgress = DownloadInstaller.progressPercent(context, current.id) ?: pendingProgress
+            when (DownloadInstaller.status(context, current.id)) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    pendingProgress = 100
+                    val valid = withContext(Dispatchers.IO) { DownloadInstaller.verifySha256(current.file, current.artifact.sha256) }
+                    if (valid) {
+                        downloaded = current
+                        pending = null
+                        if (!DownloadInstaller.canInstallPackages(context)) {
+                            notice = "Descarga verificada · habilitá instalaciones desde StoreAMO para continuar"
+                            DownloadInstaller.openInstallPermission(context)
+                        } else {
+                            notice = "Descarga verificada · abriendo instalador de Android…"
+                            installAttemptedId = current.id
+                            runCatching { DownloadInstaller.install(context, current.file) }
+                                .onFailure {
+                                    downloaded = null
+                                    installAttemptedId = null
+                                    notice = "No pude abrir el instalador: ${it.message.orEmpty()}"
+                                }
+                        }
+                    } else {
+                        current.file.delete()
+                        downloaded = null
+                        pending = null
+                        pendingProgress = null
+                        notice = "Bloqueada · el SHA-256 no coincide"
+                    }
+                    break
+                }
+                DownloadManager.STATUS_FAILED -> {
+                    notice = "La descarga falló"
+                    pending = null
+                    downloaded = null
+                    pendingProgress = null
+                    break
+                }
+                else -> delay(350)
+            }
+        }
+    }
+
+    LaunchedEffect(resumeToken) {
+        val ready = downloaded ?: return@LaunchedEffect
+        delay(250)
+        val installedNow = installedVersionV3(context, ready.artifact.applicationId)
+        when {
+            installedNow == ready.artifact.version -> {
+                downloaded = null
+                pendingProgress = null
+                installAttemptedId = null
+                notice = "Instalada correctamente · no detectamos actualizaciones para esta app."
+                selfLoading = true
+            }
+            !DownloadInstaller.canInstallPackages(context) -> {
+                notice = "Descarga verificada · habilitá instalaciones desde StoreAMO para continuar"
+            }
+            installAttemptedId == null -> {
+                notice = "Permiso concedido · abriendo instalador de Android…"
+                installAttemptedId = ready.id
+                runCatching { DownloadInstaller.install(context, ready.file) }
+                    .onFailure {
+                        downloaded = null
+                        installAttemptedId = null
+                        pendingProgress = null
+                        notice = "No pude abrir el instalador: ${it.message.orEmpty()}"
+                    }
+            }
+            installAttemptedId == ready.id -> {
+                downloaded = null
+                installAttemptedId = null
+                pendingProgress = null
+                notice = "La instalación no se completó · podés volver a tocar Actualizar para reintentar"
+            }
+        }
+    }
+'''
+          main = replace_once(main, old_pending, new_pending, 'download/install effect')
+
+          old_notice = '''            notice?.let { text ->
+                item {
+                    NoticeV3(text, downloaded != null) {
+                        val ready = downloaded ?: return@NoticeV3
+                        if (!DownloadInstaller.canInstallPackages(context)) {
+                            DownloadInstaller.openInstallPermission(context)
+                            notice = "Permití instalar apps desde StoreAMO y volvé a tocar Instalar."
+                        } else DownloadInstaller.install(context, ready.file)
+                    }
+                }
+            }
+'''
+          new_notice = '''            notice?.let { text ->
+                item { NoticeV3(text, pending != null, pendingProgress) }
+            }
+'''
+          main = replace_once(main, old_notice, new_notice, 'notice card')
+
+          old_sheet_call = '''            AppSheetV3(
+                app = app,
+                context = context,
+                verifiedOnly = verifiedOnly,
+                onDownload = { artifact ->
+'''
+          new_sheet_call = '''            AppSheetV3(
+                app = app,
+                context = context,
+                verifiedOnly = verifiedOnly,
+                pending = pending,
+                downloaded = downloaded,
+                pendingProgress = pendingProgress,
+                onDownload = { artifact ->
+'''
+          main = replace_once(main, old_sheet_call, new_sheet_call, 'sheet args')
+
+          main = replace_once(
+              main,
+              '.onSuccess { pending = it; downloaded = null; selected = null }',
+              '.onSuccess { pending = it; pendingProgress = 0; downloaded = null; installAttemptedId = null }',
+              'app download success',
+          )
+
+          old_notice_fun = '''@Composable
+private fun NoticeV3(text: String, installable: Boolean, onInstall: () -> Unit) {
+    Surface(shape = RoundedCornerShape(16.dp), color = AmoSurface2) {
+        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, color = if (text.contains("Bloqueada") || text.contains("falló")) AmoPink else AmoCyan, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            if (installable) Button(onClick = onInstall) { Text("Instalar") }
+        }
+    }
+}
+'''
+          new_notice_fun = '''@Composable
+private fun NoticeV3(text: String, downloading: Boolean, progress: Int?) {
+    Surface(shape = RoundedCornerShape(16.dp), color = AmoSurface2) {
+        Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text, color = if (text.contains("Bloqueada") || text.contains("falló") || text.contains("no se completó")) AmoPink else AmoCyan, fontSize = 11.sp)
+            if (downloading) {
+                val pct = (progress ?: 0).coerceIn(0, 100)
+                LinearProgressIndicator(progress = pct / 100f, modifier = Modifier.fillMaxWidth(), color = AmoCyan)
+                Text(if (progress == null) "Descargando…" else "$pct%", color = AmoMuted, fontSize = 10.sp)
+            }
+        }
+    }
+}
+'''
+          main = replace_once(main, old_notice_fun, new_notice_fun, 'notice function')
+
+          old_sheet_sig = 'private fun AppSheetV3(app: StoreApp, context: Context, verifiedOnly: Boolean, onDownload: (StoreArtifact) -> Unit, onCode: () -> Unit) {\n    val artifact = androidArtifactV3(app)\n    val installed = installedVersionV3(context, artifact?.applicationId)\n'
+          new_sheet_sig = 'private fun AppSheetV3(app: StoreApp, context: Context, verifiedOnly: Boolean, pending: DownloadInstaller.Pending?, downloaded: DownloadInstaller.Pending?, pendingProgress: Int?, onDownload: (StoreArtifact) -> Unit, onCode: () -> Unit) {\n    val artifact = androidArtifactV3(app)\n    val installed = installedVersionV3(context, artifact?.applicationId)\n    val isPending = artifact != null && pending?.artifact?.applicationId == artifact.applicationId && pending.artifact.version == artifact.version\n    val isInstalling = artifact != null && downloaded?.artifact?.applicationId == artifact.applicationId && downloaded.artifact.version == artifact.version\n'
+          main = replace_once(main, old_sheet_sig, new_sheet_sig, 'sheet signature')
+
+          old_sheet_button = '''                    Button(onClick = { onDownload(artifact) }, enabled = installed == artifact.version || !(verifiedOnly && !artifact.verified), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground)) { Text(actionLabelV3(context, artifact, verifiedOnly), fontWeight = FontWeight.Black) }
+'''
+          new_sheet_button = '''                    when {
+                        isPending -> {
+                            val pct = (pendingProgress ?: 0).coerceIn(0, 100)
+                            LinearProgressIndicator(progress = pct / 100f, modifier = Modifier.fillMaxWidth(), color = AmoCyan)
+                            Text(if (pendingProgress == null) "Descargando…" else "Descargando · $pct%", color = AmoCyan, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        }
+                        isInstalling -> {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = AmoCyan)
+                            Text("Descarga verificada · esperando confirmación de Android", color = AmoGreen, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        }
+                        else -> Button(onClick = { onDownload(artifact) }, enabled = installed == artifact.version || !(verifiedOnly && !artifact.verified), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground)) { Text(actionLabelV3(context, artifact, verifiedOnly), fontWeight = FontWeight.Black) }
+                    }
+'''
+          main = replace_once(main, old_sheet_button, new_sheet_button, 'sheet progress')
+          main_path.write_text(main, encoding='utf-8')
+
+          installer_path = Path('app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt')
+          installer = installer_path.read_text(encoding='utf-8')
+          marker = '''    fun status(context: Context, id: Long): Int? {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+            if (!c.moveToFirst()) return null
+            return c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        }
+    }
+'''
+          addition = marker + '''
+    fun progressPercent(context: Context, id: Long): Int? {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+            if (!c.moveToFirst()) return null
+            val downloaded = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            if (downloaded < 0L || total <= 0L) return null
+            return ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
+        }
+    }
+'''
+          installer = replace_once(installer, marker, addition, 'download progress helper')
+          installer_path.write_text(installer, encoding='utf-8')
+
+          script = Path('scripts/validate_update_flow.py')
+          script.parent.mkdir(parents=True, exist_ok=True)
+          script.write_text('''from pathlib import Path
+
+main = Path("app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt").read_text(encoding="utf-8")
+installer = Path("app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt").read_text(encoding="utf-8")
+
+required_main = [
+    "pendingProgress", "progressPercent", "abriendo instalador de Android",
+    "DownloadInstaller.install(context, current.file)", "LinearProgressIndicator",
+    "Descargando · $pct%", "esperando confirmación de Android",
+]
+missing = [x for x in required_main if x not in main]
+assert not missing, f"Missing one-tap markers: {missing}"
+assert "volvé a tocar Instalar" not in main
+assert "NoticeV3(text, downloaded != null)" not in main
+assert "Button(onClick = onInstall)" not in main
+
+required_installer = ["COLUMN_BYTES_DOWNLOADED_SO_FAR", "COLUMN_TOTAL_SIZE_BYTES", "progressPercent"]
+missing = [x for x in required_installer if x not in installer]
+assert not missing, f"Missing progress markers: {missing}"
+print("STOREAMO_ONE_TAP_UPDATE_OK")
+''', encoding='utf-8')
+
+          ci_path = Path('.github/workflows/android-ci.yml')
+          ci = ci_path.read_text(encoding='utf-8')
+          ci = replace_once(
+              ci,
+              '      - name: Build StoreAMO APK\n',
+              '      - name: Validate one-tap update regression\n        run: python scripts/validate_update_flow.py\n      - name: Build StoreAMO APK\n',
+              'CI regression step',
+          )
+          ci = ci.replace(
+              '--notes "StoreAMO 0.4.3 · mantenimiento del catálogo: evita respuestas antiguas de caché al buscar nuevas apps y Releases, manteniendo la firma canónica para actualizaciones in-place."',
+              '--notes "StoreAMO 0.4.3 · actualización de un toque: al elegir Actualizar, descarga, muestra progreso, verifica SHA-256 y abre automáticamente el instalador de Android; ya no exige un segundo botón Instalar dentro de StoreAMO."',
+          )
+          ci_path.write_text(ci, encoding='utf-8')
+          PY
+
+          python scripts/validate_update_flow.py
+
+      - name: Commit patch
+        run: |
+          git config user.name 'DesarrollAMO CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/apply-one-tap-update.yml
+          git add app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt \
+                  app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt \
+                  scripts/validate_update_flow.py \
+                  .github/workflows/android-ci.yml
+          git commit -m 'StoreAMO · actualización de un toque con progreso'
+          git push origin HEAD:fix/one-tap-updates
