@@ -15,24 +15,30 @@ StoreAMO es infraestructura de distribución. Un fallo en la tienda puede afecta
 
 ## Claves de firma
 
-Las claves privadas de firma de aplicaciones no pertenecen al repositorio, al catálogo ni a StoreAMO. Deben mantenerse fuera del código público y fuera del APK de la tienda.
+Las claves privadas de firma de aplicaciones no pertenecen al repositorio, al catálogo ni a StoreAMO. Se almacenan como secretos de CI y se materializan sólo durante el job que firma el artefacto.
+
+Un keystore que haya sido publicado, incluso codificado en Base64, se considera expuesto. Borrarlo del último commit no recupera su confidencialidad. La línea estable de StoreAMO debe usar una identidad nueva y segura; la identidad debug anterior queda limitada a pruebas/migración.
+
+StoreAMO publica únicamente el fingerprint SHA-256 del certificado, que puede utilizarse para verificar que una actualización pertenece a la identidad esperada sin revelar la clave privada.
 
 ## Modelo de confianza
 
 ```text
-repositorio de aplicación
+fuente privada o pública
         ↓
-release candidata
+CI con permisos mínimos
+        ↓
+build + firma con Secrets
+        ↓
+artefacto + SHA-256 + fingerprint público
         ↓
 StoreAMO-Verify
-        ↓
-evidencia + hash + identidad
         ↓
 StoreAMO-Catalog
         ↓
 StoreAMO
         ↓
-verificación local del SHA-256
+verificación local
         ↓
 instalador del sistema operativo
 ```

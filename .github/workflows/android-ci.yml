@@ -3,12 +3,13 @@ name: android-ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-debug:
+  build-stable-candidate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -19,44 +20,77 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Prepare canonical StoreAMO signing key
-        run: |
-          mkdir -p "$HOME/.android"
-          base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
       - name: Validate one-tap update regression
         run: python scripts/validate_one_tap_update.py
-      - name: Build StoreAMO APK
+
+      - name: Prepare secure StoreAMO signing key
         env:
-          STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
+          STOREAMO_SIGNING_KEY_B64: ${{ secrets.STOREAMO_SIGNING_KEY_B64 }}
+          STOREAMO_STORE_PASSWORD: ${{ secrets.STOREAMO_STORE_PASSWORD }}
+          STOREAMO_KEY_ALIAS: ${{ secrets.STOREAMO_KEY_ALIAS }}
+          STOREAMO_KEY_PASSWORD: ${{ secrets.STOREAMO_KEY_PASSWORD }}
         run: |
-          cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
-          gradle assembleDebug --stacktrace
-      - name: Prepare versioned artifact
+          set -euo pipefail
+          test -n "$STOREAMO_SIGNING_KEY_B64"
+          test -n "$STOREAMO_STORE_PASSWORD"
+          test -n "$STOREAMO_KEY_ALIAS"
+          test -n "$STOREAMO_KEY_PASSWORD"
+          printf '%s' "$STOREAMO_SIGNING_KEY_B64" | base64 -d > "$RUNNER_TEMP/storeamo-release.jks"
+          chmod 600 "$RUNNER_TEMP/storeamo-release.jks"
+          keytool -list \
+            -keystore "$RUNNER_TEMP/storeamo-release.jks" \
+            -storepass "$STOREAMO_STORE_PASSWORD" \
+            -alias "$STOREAMO_KEY_ALIAS" >/dev/null
+
+      - name: Build secure StoreAMO APK
+        env:
+          STOREAMO_KEYSTORE_PATH: ${{ runner.temp }}/storeamo-release.jks
+          STOREAMO_STORE_PASSWORD: ${{ secrets.STOREAMO_STORE_PASSWORD }}
+          STOREAMO_KEY_ALIAS: ${{ secrets.STOREAMO_KEY_ALIAS }}
+          STOREAMO_KEY_PASSWORD: ${{ secrets.STOREAMO_KEY_PASSWORD }}
+          CI_RELEASE_SIGNING_REQUIRED: 'true'
+        run: gradle assembleRelease --stacktrace
+
+      - name: Prepare versioned artifact and verify identity
         run: |
-          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
+          set -euo pipefail
+          VERSION="0.5.0.${GITHUB_RUN_NUMBER}"
+          VERSION_CODE=$((500000 + GITHUB_RUN_NUMBER))
+          APK="app/build/outputs/apk/release/app-release.apk"
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/StoreAMO-${VERSION}.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/signing.txt
+          grep -q 'Signer #1 certificate SHA-256 digest:' /tmp/signing.txt
+          cp "$APK" "dist/StoreAMO-${VERSION}.apk"
           sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
-          echo "PACKAGE=com.desarrollamo.storeamo.debug"
+          sed -n 's/^Signer #1 certificate SHA-256 digest: /SIGNING_CERT_SHA256=/p' /tmp/signing.txt > dist/SIGNING_CERT_SHA256.txt
+          echo "PACKAGE=com.desarrollamo.storeamo"
           echo "VERSION=${VERSION}"
-          echo "VERSION_CODE=$((430000 + GITHUB_RUN_NUMBER))"
-          echo "APK=dist/StoreAMO-${VERSION}.apk"
+          echo "VERSION_CODE=${VERSION_CODE}"
+
       - name: Upload StoreAMO APK
         uses: actions/upload-artifact@v6
         with:
-          name: StoreAMO-debug
+          name: StoreAMO-stable-candidate
           path: dist/*
-      - name: Publish self-update release
+
+      - name: Publish secure self-update candidate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
+          set -euo pipefail
+          VERSION="0.5.0.${GITHUB_RUN_NUMBER}"
           TAG="v${VERSION}"
-          gh release create "$TAG" dist/StoreAMO-${VERSION}.apk dist/SHA256SUMS.txt \
+          gh release create "$TAG" \
+            "dist/StoreAMO-${VERSION}.apk" \
+            dist/SHA256SUMS.txt \
+            dist/SIGNING_CERT_SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO 0.4.3 · actualización de un toque: OBTENER/ACTUALIZAR abre un flujo visible de progreso, verifica SHA-256 y continúa automáticamente al instalador de Android. StoreAMO ya no exige un segundo botón Instalar; Android conserva su confirmación de seguridad cuando corresponda." \
+            --notes "StoreAMO 0.5.0 security baseline: package estable com.desarrollamo.storeamo, firma privada inyectada únicamente desde GitHub Actions Secrets y fingerprint público verificable. La identidad debug anterior no se reutiliza como identidad de producción." \
             --prerelease
