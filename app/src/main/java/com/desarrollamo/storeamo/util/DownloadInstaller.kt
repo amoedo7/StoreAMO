@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
+import com.desarrollamo.storeamo.InstallFlowActivity
 import com.desarrollamo.storeamo.model.StoreArtifact
 import java.io.File
 import java.security.MessageDigest
@@ -44,7 +45,12 @@ object DownloadInstaller {
             .setAllowedOverRoaming(false)
             .setDestinationUri(Uri.fromFile(file))
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        return Pending(dm.enqueue(request), file, artifact)
+        val pending = Pending(dm.enqueue(request), file, artifact)
+
+        // Un toque significa un flujo completo. La pantalla de progreso se abre ahora,
+        // verifica el APK y entrega automáticamente la instalación a Android.
+        InstallFlowActivity.launch(context, appName, pending)
+        return pending
     }
 
     fun status(context: Context, id: Long): Int? {
@@ -52,6 +58,17 @@ object DownloadInstaller {
         dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
             if (!c.moveToFirst()) return null
             return c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        }
+    }
+
+    fun progressPercent(context: Context, id: Long): Int? {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+            if (!c.moveToFirst()) return null
+            val downloaded = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            if (downloaded < 0L || total <= 0L) return null
+            return ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
         }
     }
 
