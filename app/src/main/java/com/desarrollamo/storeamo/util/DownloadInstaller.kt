@@ -1,16 +1,17 @@
 package com.desarrollamo.storeamo.util
 
 import android.app.DownloadManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import com.desarrollamo.storeamo.model.StoreArtifact
 import java.io.File
 import java.security.MessageDigest
@@ -78,6 +79,14 @@ object DownloadInstaller {
         context.startActivity(intent)
     }
 
+    /**
+     * Instala mediante PackageInstaller.Session.
+     *
+     * Antes usábamos ACTION_VIEW con application/vnd.android.package-archive. En Android con
+     * varios handlers registrados eso abre el selector "Abrir con" (Termux, instalador, etc.).
+     * PackageInstaller entrega el APK directamente al instalador de paquetes del sistema y
+     * conserva la confirmación de seguridad que Android requiera, sin hacer elegir una app.
+     */
     fun install(context: Context, file: File) {
         val problem = preflightProblem(context, file)
         if (problem != null) {
@@ -85,29 +94,59 @@ object DownloadInstaller {
             return
         }
 
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, "application/vnd.android.package-archive")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(intent)
+        val pm = context.packageManager
+        val archive = archiveInfo(pm, file)
+        if (archive == null) {
+            Toast.makeText(context, "Instalación bloqueada: Android no reconoce este APK.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val installer = pm.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(archive.packageName)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+            }
+        }
+
+        val sessionId = installer.createSession(params)
+        try {
+            installer.openSession(sessionId).use { session ->
+                file.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, file.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
+                }
+
+                val callbackIntent = Intent(context, InstallResultReceiver::class.java).apply {
+                    action = InstallResultReceiver.ACTION_INSTALL_STATUS
+                    putExtra(InstallResultReceiver.EXTRA_SESSION_ID, sessionId)
+                }
+                val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                val statusReceiver = PendingIntent.getBroadcast(
+                    context,
+                    sessionId,
+                    callbackIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag,
+                )
+                session.commit(statusReceiver.intentSender)
+            }
+        } catch (t: Throwable) {
+            runCatching { installer.abandonSession(sessionId) }
+            throw t
+        }
     }
 
     private fun preflightProblem(context: Context, file: File): String? {
         if (!file.isFile) return "Instalación bloqueada: el APK ya no existe."
         val pm = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            PackageManager.GET_SIGNING_CERTIFICATES
-        } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_SIGNATURES
-        }
-
-        @Suppress("DEPRECATION")
-        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags)
+        val archive = archiveInfo(pm, file)
             ?: return "Instalación bloqueada: Android no reconoce este APK."
         val packageName = archive.packageName
         if (packageName.isBlank()) return "Instalación bloqueada: el APK no declara un paquete válido."
 
+        val flags = signingFlags()
         val installed = runCatching {
             @Suppress("DEPRECATION")
             pm.getPackageInfo(packageName, flags)
@@ -119,7 +158,7 @@ object DownloadInstaller {
             return "Instalación bloqueada: no pudimos comprobar la firma del APK."
         }
         if (archiveSigners != installedSigners) {
-            return "Actualización bloqueada: la firma no coincide con la app instalada. No desinstales; esta build necesita revisión."
+            return "Actualización bloqueada: la firma no coincide con la app instalada. Esta instalación necesita una migración única."
         }
 
         val incomingCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archive.longVersionCode else {
@@ -135,6 +174,19 @@ object DownloadInstaller {
             return "Esta misma versión ya está instalada."
         }
         return null
+    }
+
+    private fun archiveInfo(pm: PackageManager, file: File): PackageInfo? {
+        val flags = signingFlags()
+        @Suppress("DEPRECATION")
+        return pm.getPackageArchiveInfo(file.absolutePath, flags)
+    }
+
+    private fun signingFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        PackageManager.GET_SIGNING_CERTIFICATES
+    } else {
+        @Suppress("DEPRECATION")
+        PackageManager.GET_SIGNATURES
     }
 
     private fun signerDigests(info: PackageInfo): Set<String> {
