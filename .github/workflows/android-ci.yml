@@ -65,6 +65,10 @@ jobs:
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
           VERSION="0.4.3.${PATCH}"
           TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "${TAG} ya está publicada; no se duplica la Release."
+            exit 0
+          fi
           gh release create "$TAG" dist/StoreAMO-${VERSION}.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
