@@ -24,8 +24,10 @@ jobs:
           mkdir -p "$HOME/.android"
           base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
-      - name: Validate one-tap update regression
-        run: python scripts/validate_one_tap_update.py
+      - name: Validate StoreAMO regressions
+        run: |
+          python scripts/validate_one_tap_update.py
+          python scripts/validate_04365_features.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -34,13 +36,20 @@ jobs:
           gradle assembleDebug --stacktrace
       - name: Prepare versioned artifact
         run: |
-          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
+          set -euo pipefail
+          PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
+          test "$PATCH" = "65"
+          VERSION="0.4.3.${PATCH}"
+          VERSION_CODE=$((430000 + PATCH))
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/storeamo-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/StoreAMO-${VERSION}.apk"
+          cp "$APK" "dist/StoreAMO-${VERSION}.apk"
           sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
           echo "PACKAGE=com.desarrollamo.storeamo.debug"
           echo "VERSION=${VERSION}"
-          echo "VERSION_CODE=$((430000 + GITHUB_RUN_NUMBER))"
+          echo "VERSION_CODE=${VERSION_CODE}"
           echo "APK=dist/StoreAMO-${VERSION}.apk"
       - name: Upload StoreAMO APK
         uses: actions/upload-artifact@v6
@@ -52,11 +61,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="0.4.3.${GITHUB_RUN_NUMBER}"
+          set -euo pipefail
+          PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
+          VERSION="0.4.3.${PATCH}"
           TAG="v${VERSION}"
           gh release create "$TAG" dist/StoreAMO-${VERSION}.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO 0.4.3 · actualización de un toque: OBTENER/ACTUALIZAR abre un flujo visible de progreso, verifica SHA-256 y continúa automáticamente al instalador de Android. StoreAMO ya no exige un segundo botón Instalar; Android conserva su confirmación de seguridad cuando corresponda." \
+            --notes "StoreAMO ${VERSION}: añade Desinstalar para las apps instaladas y Buenas Nuevas, un feed dentro de StoreAMO que resume versiones, mejoras y actividad reciente del ecosistema sin obligar al usuario a navegar GitHub. Las fuentes privadas sólo muestran actividad sanitizada." \
             --prerelease
