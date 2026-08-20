@@ -1,9 +1,13 @@
 package com.desarrollamo.storeamo.util
 
+import android.app.Activity
 import android.app.DownloadManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
@@ -11,13 +15,19 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
-import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.desarrollamo.storeamo.InstallFlowActivity
 import com.desarrollamo.storeamo.model.StoreArtifact
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
+import java.util.Locale
 
 object DownloadInstaller {
+    private const val APK_MIME = "application/vnd.android.package-archive"
+    private const val MAX_REDIRECTS = 6
+
     data class Pending(val id: Long, val file: File, val artifact: StoreArtifact)
 
     fun start(context: Context, appName: String, artifact: StoreArtifact): Pending {
@@ -32,7 +42,6 @@ object DownloadInstaller {
             ?: error("No hay almacenamiento de descargas disponible")
         dir.mkdirs()
 
-        // Evita que un APK antiguo quede disponible como si fuera la descarga actual.
         dir.listFiles()?.filter { it.name.startsWith("$safeAppName-") && it.extension.equals("apk", true) }
             ?.forEach { it.delete() }
 
@@ -47,8 +56,6 @@ object DownloadInstaller {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val pending = Pending(dm.enqueue(request), file, artifact)
 
-        // Un toque significa un flujo completo. La pantalla de progreso se abre ahora,
-        // verifica el APK y entrega automáticamente la instalación a Android.
         InstallFlowActivity.launch(context, appName, pending)
         return pending
     }
@@ -69,6 +76,108 @@ object DownloadInstaller {
             val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
             if (downloaded < 0L || total <= 0L) return null
             return ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
+        }
+    }
+
+    fun downloadFailureReason(context: Context, id: Long): String {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val reason = runCatching {
+            dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+                if (!c.moveToFirst()) return@use null
+                c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+            }
+        }.getOrNull()
+
+        return when (reason) {
+            DownloadManager.ERROR_CANNOT_RESUME -> "Android no pudo reanudar la descarga"
+            DownloadManager.ERROR_DEVICE_NOT_FOUND -> "Android no encontró el almacenamiento de destino"
+            DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "Ya existe un archivo incompatible en el destino"
+            DownloadManager.ERROR_FILE_ERROR -> "Android tuvo un error al escribir el APK"
+            DownloadManager.ERROR_HTTP_DATA_ERROR -> "La conexión HTTP se interrumpió"
+            DownloadManager.ERROR_INSUFFICIENT_SPACE -> "No hay espacio suficiente para descargar"
+            DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "La descarga tuvo demasiadas redirecciones"
+            DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "El servidor devolvió un código HTTP no manejado"
+            DownloadManager.ERROR_UNKNOWN -> "DownloadManager devolvió un error desconocido"
+            null -> "DownloadManager no informó el motivo"
+            in 400..599 -> "El servidor respondió HTTP $reason"
+            else -> "DownloadManager informó el código $reason"
+        }
+    }
+
+    /**
+     * Descarga alternativa controlada por StoreAMO. Se usa cuando DownloadManager
+     * falla o se queda bloqueado en ciertos Android/OEM. Nunca acepta bajar de HTTPS.
+     */
+    fun directDownload(artifact: StoreArtifact, file: File, onProgress: (Int?) -> Unit) {
+        require(artifact.url.startsWith("https://")) { "URL no segura" }
+        file.parentFile?.mkdirs()
+        val part = File(file.parentFile, "${file.name}.part")
+        part.delete()
+        file.delete()
+
+        var current = URL(artifact.url)
+        var completed = false
+        try {
+            for (hop in 0 until MAX_REDIRECTS) {
+                require(current.protocol.equals("https", ignoreCase = true)) { "La descarga intentó salir de HTTPS" }
+                val connection = (current.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 10_000
+                    readTimeout = 20_000
+                    requestMethod = "GET"
+                    instanceFollowRedirects = false
+                    useCaches = false
+                    setRequestProperty("Accept", APK_MIME)
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("User-Agent", "StoreAMO/0.4.3.68")
+                }
+                try {
+                    val code = connection.responseCode
+                    if (code in listOf(301, 302, 303, 307, 308)) {
+                        val location = connection.getHeaderField("Location")
+                            ?: error("Redirección sin destino")
+                        val next = URL(current, location)
+                        require(next.protocol.equals("https", ignoreCase = true)) { "Redirección insegura bloqueada" }
+                        current = next
+                        continue
+                    }
+                    require(code in 200..299) { "Descarga directa HTTP $code" }
+
+                    val total = connection.contentLengthLong.takeIf { it > 0L }
+                    var written = 0L
+                    connection.inputStream.buffered().use { input ->
+                        part.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(256 * 1024)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count <= 0) break
+                                output.write(buffer, 0, count)
+                                written += count
+                                val percent = total?.let { ((written * 100L) / it).toInt().coerceIn(0, 100) }
+                                onProgress(percent)
+                            }
+                        }
+                    }
+                    require(part.isFile && part.length() > 0L) { "La descarga directa quedó vacía" }
+                    artifact.sizeBytes?.takeIf { it > 0L }?.let { expected ->
+                        require(part.length() == expected) {
+                            "Tamaño inesperado: ${part.length()} bytes; se esperaban $expected"
+                        }
+                    }
+                    if (!part.renameTo(file)) {
+                        part.copyTo(file, overwrite = true)
+                        part.delete()
+                    }
+                    require(file.isFile && file.length() > 0L) { "No pude materializar el APK descargado" }
+                    onProgress(100)
+                    completed = true
+                    return
+                } finally {
+                    connection.disconnect()
+                }
+            }
+            error("La descarga directa superó $MAX_REDIRECTS redirecciones")
+        } finally {
+            if (!completed) part.delete()
         }
     }
 
@@ -97,26 +206,53 @@ object DownloadInstaller {
     }
 
     /**
-     * Instala mediante PackageInstaller.Session.
-     *
-     * Antes usábamos ACTION_VIEW con application/vnd.android.package-archive. En Android con
-     * varios handlers registrados eso abre el selector "Abrir con" (Termux, instalador, etc.).
-     * PackageInstaller entrega el APK directamente al instalador de paquetes del sistema y
-     * conserva la confirmación de seguridad que Android requiera, sin hacer elegir una app.
+     * Abre primero el instalador visible del sistema usando FileProvider. Este camino
+     * es deliberadamente el principal porque es el más compatible con ROMs/OEM que
+     * tratan PackageInstaller.Session de forma distinta para tiendas de terceros.
      */
-    fun install(context: Context, file: File) {
-        val problem = preflightProblem(context, file)
-        if (problem != null) {
-            Toast.makeText(context, problem, Toast.LENGTH_LONG).show()
-            return
+    fun openSystemInstaller(context: Context, file: File): String {
+        preflightProblem(context, file)?.let { throw IllegalStateException(it) }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+
+        fun prepare(intent: Intent): Intent = intent.apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            clipData = ClipData.newRawUri("StoreAMO APK", uri)
         }
 
+        val primary = prepare(Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri))
+        try {
+            context.startActivity(primary)
+            return "Instalador del sistema"
+        } catch (_: ActivityNotFoundException) {
+            // Algunos fabricantes no exponen ACTION_INSTALL_PACKAGE. En ese caso
+            // usamos ACTION_VIEW, priorizando un handler del sistema para evitar
+            // selectores con apps como Termux.
+        }
+
+        val viewIntent = prepare(Intent(Intent.ACTION_VIEW).setDataAndType(uri, APK_MIME))
+        val handlers = context.packageManager.queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        val preferred = handlers.firstOrNull { resolve ->
+            val info = resolve.activityInfo?.applicationInfo ?: return@firstOrNull false
+            val system = (info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+            val pkg = info.packageName.lowercase(Locale.ROOT)
+            system && (pkg.contains("packageinstaller") || pkg.contains("installer") || pkg.contains("permissioncontroller"))
+        } ?: handlers.firstOrNull { resolve ->
+            val info = resolve.activityInfo?.applicationInfo ?: return@firstOrNull false
+            (info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+        }
+        if (preferred != null) viewIntent.setPackage(preferred.activityInfo.packageName)
+
+        context.startActivity(viewIntent)
+        return if (preferred != null) "Instalador del sistema (compatibilidad)" else "Instalador Android (compatibilidad)"
+    }
+
+    /** Fallback para dispositivos sin Activity de instalación utilizable. */
+    fun installWithSession(context: Context, file: File): Int {
+        preflightProblem(context, file)?.let { throw IllegalStateException(it) }
         val pm = context.packageManager
         val archive = archiveInfo(pm, file)
-        if (archive == null) {
-            Toast.makeText(context, "Instalación bloqueada: Android no reconoce este APK.", Toast.LENGTH_LONG).show()
-            return
-        }
+            ?: throw IllegalStateException("Instalación bloqueada: Android no reconoce este APK.")
 
         val installer = pm.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -149,13 +285,14 @@ object DownloadInstaller {
                 )
                 session.commit(statusReceiver.intentSender)
             }
+            return sessionId
         } catch (t: Throwable) {
             runCatching { installer.abandonSession(sessionId) }
             throw t
         }
     }
 
-    private fun preflightProblem(context: Context, file: File): String? {
+    fun preflightProblem(context: Context, file: File): String? {
         if (!file.isFile) return "Instalación bloqueada: el APK ya no existe."
         val pm = context.packageManager
         val archive = archiveInfo(pm, file)
@@ -167,7 +304,7 @@ object DownloadInstaller {
         val installed = runCatching {
             @Suppress("DEPRECATION")
             pm.getPackageInfo(packageName, flags)
-        }.getOrNull() ?: return null // primera instalación: el SHA ya fue verificado antes.
+        }.getOrNull() ?: return null
 
         val archiveSigners = signerDigests(archive)
         val installedSigners = signerDigests(installed)
