@@ -104,10 +104,6 @@ object DownloadInstaller {
         }
     }
 
-    /**
-     * Descarga alternativa controlada por StoreAMO. Se usa cuando DownloadManager
-     * falla o se queda bloqueado en ciertos Android/OEM. Nunca acepta bajar de HTTPS.
-     */
     fun directDownload(artifact: StoreArtifact, file: File, onProgress: (Int?) -> Unit) {
         require(artifact.url.startsWith("https://")) { "URL no segura" }
         file.parentFile?.mkdirs()
@@ -205,11 +201,6 @@ object DownloadInstaller {
         context.startActivity(intent)
     }
 
-    /**
-     * Abre primero el instalador visible del sistema usando FileProvider. Este camino
-     * es deliberadamente el principal porque es el más compatible con ROMs/OEM que
-     * tratan PackageInstaller.Session de forma distinta para tiendas de terceros.
-     */
     fun openSystemInstaller(context: Context, file: File): String {
         preflightProblem(context, file)?.let { throw IllegalStateException(it) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -225,9 +216,7 @@ object DownloadInstaller {
             context.startActivity(primary)
             return "Instalador del sistema"
         } catch (_: ActivityNotFoundException) {
-            // Algunos fabricantes no exponen ACTION_INSTALL_PACKAGE. En ese caso
-            // usamos ACTION_VIEW, priorizando un handler del sistema para evitar
-            // selectores con apps como Termux.
+            // Algunos fabricantes no exponen ACTION_INSTALL_PACKAGE.
         }
 
         val viewIntent = prepare(Intent(Intent.ACTION_VIEW).setDataAndType(uri, APK_MIME))
@@ -247,7 +236,6 @@ object DownloadInstaller {
         return if (preferred != null) "Instalador del sistema (compatibilidad)" else "Instalador Android (compatibilidad)"
     }
 
-    /** Fallback para dispositivos sin Activity de instalación utilizable. */
     fun installWithSession(context: Context, file: File): Int {
         preflightProblem(context, file)?.let { throw IllegalStateException(it) }
         val pm = context.packageManager
@@ -290,6 +278,12 @@ object DownloadInstaller {
             runCatching { installer.abandonSession(sessionId) }
             throw t
         }
+    }
+
+    /** Compatibilidad con pantallas legacy: nunca traga errores de preflight. */
+    fun install(context: Context, file: File) {
+        runCatching { openSystemInstaller(context, file) }
+            .getOrElse { installWithSession(context, file) }
     }
 
     fun preflightProblem(context: Context, file: File): String? {
