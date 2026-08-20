@@ -50,6 +50,10 @@
 
         <activity
             android:name=".MainActivityV3"
+            android:exported="false" />
+
+        <activity
+            android:name=".BootstrapActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
