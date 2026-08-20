@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "65"
+          test "$PATCH" = "66"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -73,5 +73,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION}: añade Desinstalar para las apps instaladas y Buenas Nuevas, un feed dentro de StoreAMO que resume versiones, mejoras y actividad reciente del ecosistema sin obligar al usuario a navegar GitHub. Las fuentes privadas sólo muestran actividad sanitizada." \
+            --notes "StoreAMO ${VERSION}: corrige el bloqueo de descargas de apps candidate en instalaciones existentes. Tras actualizar, StoreAMO migra una vez el ajuste 'Sólo versiones verificadas' a desactivado para que las candidates puedan instalarse como Obtener alpha, manteniendo SHA-256 y confirmación del instalador Android. El usuario puede volver a activar el filtro desde Ajustes." \
             --prerelease
