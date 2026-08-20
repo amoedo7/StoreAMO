@@ -1,0 +1,162 @@
+name: repair-uninstall-v04367
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - uninstall-fix.trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-uninstall-v04367
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Patch uninstall flow and bump StoreAMO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          main_p = root / 'app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt'
+          main = main_p.read_text(encoding='utf-8')
+
+          old_import = 'import android.os.Bundle\n'
+          if 'import android.provider.Settings\n' not in main:
+              assert old_import in main
+              main = main.replace(old_import, old_import + 'import android.provider.Settings\n', 1)
+
+          old = '''private fun uninstallInstalledV3(context: Context, packageName: String?) {
+    if (packageName.isNullOrBlank()) return
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+'''
+          new = '''private fun openAppDetailsV3(context: Context, packageName: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
+private fun uninstallInstalledV3(context: Context, packageName: String?) {
+    if (packageName.isNullOrBlank()) return
+    val packageUri = Uri.parse("package:$packageName")
+    val launched = runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_UNINSTALL_PACKAGE, packageUri)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+    }.getOrDefault(false)
+
+    // Android no permite desinstalación silenciosa a una tienda normal. Si el
+    // desinstalador del sistema no está disponible o rechaza la petición,
+    // abrimos directamente la ficha del sistema para que el usuario use
+    // Desinstalar, como en Ajustes > Información de la aplicación.
+    if (!launched) openAppDetailsV3(context, packageName)
+}
+'''
+          assert old in main, 'No se encontró el flujo de desinstalación esperado'
+          main = main.replace(old, new, 1)
+          main_p.write_text(main, encoding='utf-8')
+
+          manifest_p = root / 'app/src/main/AndroidManifest.xml'
+          manifest = manifest_p.read_text(encoding='utf-8')
+          permission = '    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />\n'
+          if permission not in manifest:
+              needle = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+              assert needle in manifest
+              manifest = manifest.replace(needle, needle + permission, 1)
+          manifest_p.write_text(manifest, encoding='utf-8')
+
+          props_p = root / 'gradle.properties'
+          props = props_p.read_text(encoding='utf-8')
+          assert 'storeamo.versionPatch=66' in props
+          props_p.write_text(props.replace('storeamo.versionPatch=66', 'storeamo.versionPatch=67', 1), encoding='utf-8')
+
+          build_p = root / 'app/build.gradle'
+          build = build_p.read_text(encoding='utf-8')
+          build = build.replace("project.findProperty('storeamo.versionPatch') ?: '65'", "project.findProperty('storeamo.versionPatch') ?: '67'", 1)
+          build_p.write_text(build, encoding='utf-8')
+
+          features_p = root / 'scripts/validate_04365_features.py'
+          features = features_p.read_text(encoding='utf-8')
+          features = features.replace("assert 'Intent.ACTION_DELETE' in main", "assert 'Intent.ACTION_UNINSTALL_PACKAGE' in main\nassert 'Settings.ACTION_APPLICATION_DETAILS_SETTINGS' in main\nassert 'android.permission.REQUEST_DELETE_PACKAGES' in manifest", 1)
+          features_p.write_text(features, encoding='utf-8')
+
+          validator_p = root / 'scripts/validate_uninstall_flow.py'
+          validator_p.write_text('''#!/usr/bin/env python3
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+main = (root / 'app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt').read_text(encoding='utf-8')
+manifest = (root / 'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+props = (root / 'gradle.properties').read_text(encoding='utf-8')
+
+assert 'android.permission.REQUEST_DELETE_PACKAGES' in manifest
+assert 'Intent.ACTION_UNINSTALL_PACKAGE' in main
+assert 'Settings.ACTION_APPLICATION_DETAILS_SETTINGS' in main
+assert 'openAppDetailsV3(context, packageName)' in main
+assert '.getOrDefault(false)' in main
+assert 'storeamo.versionPatch=67' in props
+print('STOREAMO_UNINSTALL_FLOW_OK')
+''', encoding='utf-8')
+
+          ci_p = root / '.github/workflows/android-ci.yml'
+          ci = ci_p.read_text(encoding='utf-8')
+          assert 'test "$PATCH" = "66"' in ci
+          ci = ci.replace('test "$PATCH" = "66"', 'test "$PATCH" = "67"', 1)
+          if 'python scripts/validate_uninstall_flow.py' not in ci:
+              ci = ci.replace('          python scripts/validate_04365_features.py\n', '          python scripts/validate_04365_features.py\n          python scripts/validate_uninstall_flow.py\n', 1)
+          ci = re.sub(
+              r'--notes "StoreAMO \$\{VERSION\}:.*"',
+              '--notes "StoreAMO ${VERSION}: corrige Desinstalar. Declara REQUEST_DELETE_PACKAGES para poder abrir el desinstalador oficial de Android y, si ese flujo no puede iniciarse, abre la ficha de Información de la aplicación del sistema para que el usuario pueda eliminarla manualmente."',
+              ci,
+              count=1,
+          )
+          ci_p.write_text(ci, encoding='utf-8')
+          PY
+
+      - name: Validate patched source
+        run: |
+          set -euo pipefail
+          python scripts/validate_04365_features.py
+          python scripts/validate_uninstall_flow.py
+          grep -q 'android.permission.REQUEST_DELETE_PACKAGES' app/src/main/AndroidManifest.xml
+          grep -q 'storeamo.versionPatch=67' gradle.properties
+
+      - name: Commit StoreAMO 0.4.3.67
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'StoreAMO Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/com/desarrollamo/storeamo/MainActivityV3.kt \
+                  app/src/main/AndroidManifest.xml \
+                  app/build.gradle \
+                  gradle.properties \
+                  scripts/validate_04365_features.py \
+                  scripts/validate_uninstall_flow.py \
+                  .github/workflows/android-ci.yml
+          git commit -m 'fix: make StoreAMO uninstall flow functional in 0.4.3.67'
+          git pull --rebase origin main
+          git push origin HEAD:main
