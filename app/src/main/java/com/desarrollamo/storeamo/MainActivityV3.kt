@@ -121,6 +121,16 @@ private fun openInstalledV3(context: Context, packageName: String?) {
     }
 }
 
+private fun uninstallInstalledV3(context: Context, packageName: String?) {
+    if (packageName.isNullOrBlank()) return
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
 private fun glyphV3(app: StoreApp): String = when (app.id) {
     "plataformamo" -> "P"; "presupuestamo" -> "$"; "chessi" -> "♟"; "midispositivo" -> "D"
     "mired" -> "R"; "misistema" -> "M"; "miweb" -> "W"; "miarchivos" -> "A"; "miapi" -> "API"
@@ -273,6 +283,7 @@ private fun StoreAmoV3(resumeToken: Int) {
             when (tab) {
                 TabV3.HOME -> {
                     item { HeroV3(loading, catalogError, ::refreshEverything) }
+                    item { GoodNewsEntryV3(context) }
                     item { SearchV3(query) { query = it } }
                     val featured = teamApps.firstOrNull { it.id == "plataformamo" }
                         ?: availableApps.firstOrNull { it.featured }
@@ -344,7 +355,13 @@ private fun StoreAmoV3(resumeToken: Int) {
                     if (installedApps.isNotEmpty()) {
                         item { SectionV3("INSTALADAS", "En este dispositivo") }
                         items(installedApps, key = { "installed-${it.first.id}" }) { (app, artifact, installed) ->
-                            InstalledCardV3(app, artifact, installed) { selected = app }
+                            InstalledCardV3(
+                                app = app,
+                                artifact = artifact,
+                                installed = installed,
+                                onOpen = { selected = app },
+                                onUninstall = { uninstallInstalledV3(context, artifact.applicationId) },
+                            )
                         }
                     }
                 }
@@ -436,6 +453,29 @@ private fun SectionV3(kicker: String, title: String) {
 }
 
 @Composable
+private fun GoodNewsEntryV3(context: Context) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .background(Brush.linearGradient(listOf(AmoSurface2, AmoCyan.copy(alpha = .16f), AmoPink.copy(alpha = .15f))))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("BUENAS NUEVAS", color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
+            Text("El ecosistema se está moviendo", fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Text("Versiones, mejoras y apps que están avanzando, explicadas acá sin tener que navegar GitHub.", color = AmoMuted, fontSize = 12.sp)
+            Button(
+                onClick = { context.startActivity(Intent(context, GoodNewsActivity::class.java)) },
+                colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground),
+            ) { Text("Ver Buenas Nuevas", fontWeight = FontWeight.Black) }
+        }
+    }
+}
+
+@Composable
 private fun PageHeaderV3(kicker: String, title: String, body: String) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { Text(kicker, color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black); Text(title, fontSize = 34.sp, fontWeight = FontWeight.Black); Text(body, color = AmoMuted, fontSize = 13.sp) }
 }
@@ -484,13 +524,24 @@ private fun UpcomingCardV3(app: StoreApp, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun InstalledCardV3(app: StoreApp, artifact: StoreArtifact, installed: String, onOpen: () -> Unit) {
+private fun InstalledCardV3(
+    app: StoreApp,
+    artifact: StoreArtifact,
+    installed: String,
+    onOpen: () -> Unit,
+    onUninstall: () -> Unit,
+) {
     val upToDate = installed == artifact.version
     Surface(onClick = onOpen, shape = RoundedCornerShape(18.dp), color = AmoSurface) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(glyphV3(app), color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.width(44.dp))
-            Column(Modifier.weight(1f)) { Text(app.name, fontWeight = FontWeight.Black); Text("Instalada · $installed", color = AmoMuted, fontSize = 10.sp) }
-            Text(if (upToDate) "Al día" else "Actualizar", color = if (upToDate) AmoGreen else AmoCyan, fontSize = 10.sp, fontWeight = FontWeight.Black)
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(glyphV3(app), color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.width(44.dp))
+                Column(Modifier.weight(1f)) { Text(app.name, fontWeight = FontWeight.Black); Text("Instalada · $installed", color = AmoMuted, fontSize = 10.sp) }
+                Text(if (upToDate) "Al día" else "Actualizar", color = if (upToDate) AmoGreen else AmoCyan, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            }
+            OutlinedButton(onClick = onUninstall, modifier = Modifier.fillMaxWidth()) {
+                Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+            }
         }
     }
 }
@@ -584,6 +635,11 @@ private fun AppSheetV3(app: StoreApp, context: Context, verifiedOnly: Boolean, o
                         else -> Text("Release candidata. Podés probarla si desactivás ‘Sólo versiones verificadas’.", color = AmoMuted, fontSize = 11.sp)
                     }
                     Button(onClick = { onDownload(artifact) }, enabled = installed == artifact.version || !(verifiedOnly && !artifact.verified), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground)) { Text(actionLabelV3(context, artifact, verifiedOnly), fontWeight = FontWeight.Black) }
+                    if (installed != null) {
+                        OutlinedButton(onClick = { uninstallInstalledV3(context, artifact.applicationId) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+                        }
+                    }
                 }
             }
         } else {
