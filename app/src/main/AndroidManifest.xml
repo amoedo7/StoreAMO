@@ -4,12 +4,20 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
-    <!-- StoreAMO evita QUERY_ALL_PACKAGES. El intent genérico hace visibles las apps
-         con launcher sin hardcodear cada nuevo package del ecosistema. -->
+    <!-- StoreAMO evita QUERY_ALL_PACKAGES. Consulta launchers y los handlers
+         del instalador Android necesarios para entregar un APK verificado. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.INSTALL_PACKAGE" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
         </intent>
         <package android:name="com.termux" />
         <package android:name="com.desarrollamo.plataformamo.dev" />

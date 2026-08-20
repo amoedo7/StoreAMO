@@ -28,6 +28,7 @@ jobs:
         run: |
           python scripts/validate_one_tap_update.py
           python scripts/validate_04365_features.py
+          python scripts/validate_install_pipeline.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -38,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "66"
+          test "$PATCH" = "68"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -47,6 +48,7 @@ jobs:
           mkdir -p dist
           cp "$APK" "dist/StoreAMO-${VERSION}.apk"
           sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
+          unzip -tqq "dist/StoreAMO-${VERSION}.apk"
           echo "PACKAGE=com.desarrollamo.storeamo.debug"
           echo "VERSION=${VERSION}"
           echo "VERSION_CODE=${VERSION_CODE}"
@@ -73,5 +75,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION}: corrige el bloqueo de descargas de apps candidate en instalaciones existentes. Tras actualizar, StoreAMO migra una vez el ajuste 'Sólo versiones verificadas' a desactivado para que las candidates puedan instalarse como Obtener alpha, manteniendo SHA-256 y confirmación del instalador Android. El usuario puede volver a activar el filtro desde Ajustes." \
+            --notes "StoreAMO ${VERSION}: rehace el flujo OBTENER/ACTUALIZAR para Android reales. Mantiene DownloadManager pero cambia automáticamente a descarga HTTPS directa si falla, muestra el motivo concreto, verifica SHA-256 y abre primero el instalador visible del sistema mediante FileProvider. Conserva PackageInstaller como fallback y la confirmación de seguridad de Android." \
             --prerelease

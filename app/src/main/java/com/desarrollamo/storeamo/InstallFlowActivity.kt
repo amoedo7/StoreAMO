@@ -15,16 +15,15 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.desarrollamo.storeamo.model.StoreArtifact
 import com.desarrollamo.storeamo.util.DownloadInstaller
 import java.io.File
 
 /**
- * Flujo visible de instalación de StoreAMO.
+ * Flujo visible y tolerante a fallos de instalación de StoreAMO.
  *
- * Un toque en OBTENER/ACTUALIZAR inicia descarga -> progreso -> SHA-256 ->
- * permiso del sistema (si hace falta) -> instalador Android. StoreAMO no pide
- * un segundo toque propio para instalar. Android conserva su confirmación de
- * seguridad cuando el sistema la exige.
+ * OBTENER/ACTUALIZAR: DownloadManager -> fallback HTTPS directo -> SHA-256 ->
+ * permiso de Android -> instalador visible del sistema -> PackageInstaller fallback.
  */
 class InstallFlowActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -34,6 +33,8 @@ class InstallFlowActivity : Activity() {
     private lateinit var expectedSha256: String
     private lateinit var appName: String
     private lateinit var targetVersion: String
+    private lateinit var artifactUrl: String
+    private var artifactSizeBytes: Long? = null
     private var applicationId: String? = null
 
     private lateinit var progress: ProgressBar
@@ -43,6 +44,7 @@ class InstallFlowActivity : Activity() {
     private lateinit var close: Button
 
     private var polling = false
+    private var fallbackDownloading = false
     private var verifying = false
     private var awaitingPermission = false
     private var installing = false
@@ -58,7 +60,7 @@ class InstallFlowActivity : Activity() {
                 detail.text = "Descargando · $percent%"
             } else {
                 progress.isIndeterminate = true
-                detail.text = "Descargando…"
+                detail.text = "Descargando con Android…"
             }
 
             when (DownloadInstaller.status(this@InstallFlowActivity, downloadId)) {
@@ -69,11 +71,14 @@ class InstallFlowActivity : Activity() {
                     detail.text = "Descarga completa · verificando integridad"
                     verifyAndContinue()
                 }
+
                 android.app.DownloadManager.STATUS_FAILED -> {
                     polling = false
-                    fail("La descarga falló. Podés reintentar sin salir de StoreAMO.")
+                    val reason = DownloadInstaller.downloadFailureReason(this@InstallFlowActivity, downloadId)
+                    startDirectFallback(reason)
                 }
-                else -> handler.postDelayed(this, 300)
+
+                else -> handler.postDelayed(this, 350)
             }
         }
     }
@@ -86,9 +91,12 @@ class InstallFlowActivity : Activity() {
                 success()
                 return
             }
-            if (System.currentTimeMillis() - installStartedAt > 120_000L) {
+            if (System.currentTimeMillis() - installStartedAt > 75_000L) {
                 installing = false
-                fail("La instalación no se completó. Si cancelaste la pantalla de Android, podés reintentar.")
+                fail(
+                    "Android no confirmó la instalación. Si la cancelaste o el instalador mostró un error, " +
+                        "tocá Reintentar; StoreAMO volverá a abrir el instalador del sistema."
+                )
                 return
             }
             handler.postDelayed(this, 700)
@@ -103,8 +111,13 @@ class InstallFlowActivity : Activity() {
         appName = intent.getStringExtra(EXTRA_APP_NAME).orEmpty().ifBlank { "Aplicación" }
         targetVersion = intent.getStringExtra(EXTRA_VERSION).orEmpty()
         applicationId = intent.getStringExtra(EXTRA_APPLICATION_ID)?.ifBlank { null }
+        artifactUrl = intent.getStringExtra(EXTRA_URL).orEmpty()
+        artifactSizeBytes = intent.getLongExtra(EXTRA_SIZE_BYTES, -1L).takeIf { it > 0L }
 
-        if (downloadId < 0 || filePath.isBlank() || !expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+        if (
+            downloadId < 0 || filePath.isBlank() || !expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$")) ||
+            !artifactUrl.startsWith("https://")
+        ) {
             finish()
             return
         }
@@ -122,6 +135,9 @@ class InstallFlowActivity : Activity() {
             } else {
                 status.text = "Falta un permiso de Android"
                 detail.text = "Permití instalar apps desde StoreAMO para continuar. La descarga ya está verificada."
+                retry.visibility = View.VISIBLE
+                retry.text = "Abrir permiso de instalación"
+                retry.setOnClickListener { DownloadInstaller.openInstallPermission(this) }
             }
         } else if (installing && targetInstalled()) {
             installing = false
@@ -136,7 +152,7 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun startPolling() {
-        status.text = "Actualizando $appName"
+        status.text = "Obteniendo $appName"
         detail.text = "Preparando descarga…"
         retry.visibility = View.GONE
         close.visibility = View.GONE
@@ -146,26 +162,83 @@ class InstallFlowActivity : Activity() {
         handler.post(pollDownload)
     }
 
+    private fun startDirectFallback(originalReason: String) {
+        if (fallbackDownloading || verifying || isFinishing) return
+        fallbackDownloading = true
+        status.text = "Probando descarga alternativa"
+        detail.text = "$originalReason. StoreAMO cambia automáticamente a HTTPS directo."
+        progress.isIndeterminate = true
+        retry.visibility = View.GONE
+        close.visibility = View.GONE
+
+        val artifact = StoreArtifact(
+            platform = "android",
+            arch = null,
+            format = "apk",
+            version = targetVersion,
+            versionCode = "",
+            url = artifactUrl,
+            sha256 = expectedSha256,
+            sizeBytes = artifactSizeBytes,
+            verified = false,
+            applicationId = applicationId,
+            verificationReport = null,
+        )
+
+        Thread {
+            val result = runCatching {
+                DownloadInstaller.directDownload(artifact, apkFile) { percent ->
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        if (percent == null) {
+                            progress.isIndeterminate = true
+                            detail.text = "Descarga HTTPS directa en curso…"
+                        } else {
+                            progress.isIndeterminate = false
+                            progress.progress = percent
+                            detail.text = "Descarga HTTPS directa · $percent%"
+                        }
+                    }
+                }
+            }
+            runOnUiThread {
+                fallbackDownloading = false
+                result.onSuccess {
+                    progress.isIndeterminate = false
+                    progress.progress = 100
+                    detail.text = "Descarga alternativa completa · verificando SHA-256"
+                    verifyAndContinue()
+                }.onFailure { error ->
+                    fail("Fallaron ambos métodos de descarga. ${error.message.orEmpty()}")
+                }
+            }
+        }.start()
+    }
+
     private fun verifyAndContinue() {
-        if (verifying) return
+        if (verifying || fallbackDownloading) return
         verifying = true
+        status.text = "Verificando integridad"
+        detail.text = "Comparando el APK con el SHA-256 publicado por StoreAMO-Catalog."
+        progress.isIndeterminate = true
+
         Thread {
             val valid = runCatching { DownloadInstaller.verifySha256(apkFile, expectedSha256) }.getOrDefault(false)
             runOnUiThread {
                 verifying = false
                 if (!valid) {
                     runCatching { apkFile.delete() }
-                    fail("StoreAMO bloqueó la instalación: el SHA-256 no coincide con la Release.")
+                    fail("StoreAMO bloqueó la instalación: el SHA-256 no coincide con el catálogo.")
                     return@runOnUiThread
                 }
                 status.text = "Descarga verificada"
-                detail.text = "Integridad correcta · preparando instalación"
+                detail.text = "SHA-256 correcto · preparando el instalador de Android."
                 if (DownloadInstaller.canInstallPackages(this)) {
                     startInstall()
                 } else {
                     awaitingPermission = true
                     status.text = "Autorización de Android"
-                    detail.text = "StoreAMO necesita permiso para entregar APK al instalador del sistema. Sólo se pide una vez."
+                    detail.text = "Permití instalar apps desde StoreAMO. La descarga ya está verificada y no se repetirá."
                     DownloadInstaller.openInstallPermission(this)
                 }
             }
@@ -173,24 +246,43 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun startInstall() {
-        if (installing) return
+        if (installing || isFinishing) return
         if (targetInstalled()) {
             success()
             return
         }
-        status.text = "Instalando $appName"
-        detail.text = "Descarga verificada · Android puede pedir una confirmación de seguridad."
+
+        val preflight = DownloadInstaller.preflightProblem(this, apkFile)
+        if (preflight != null) {
+            fail(preflight)
+            return
+        }
+
+        status.text = "Abriendo instalador de Android"
+        detail.text = "APK verificado · Android puede pedir una confirmación de seguridad."
         progress.isIndeterminate = true
         retry.visibility = View.GONE
         close.visibility = View.GONE
+
+        val route = runCatching {
+            DownloadInstaller.openSystemInstaller(this, apkFile)
+        }.recoverCatching { primaryError ->
+            status.text = "Usando instalador alternativo"
+            detail.text = "El instalador visible no abrió (${primaryError.message.orEmpty()}). Probando PackageInstaller…"
+            DownloadInstaller.installWithSession(this, apkFile)
+            "PackageInstaller del sistema"
+        }
+
+        route.onFailure { error ->
+            installing = false
+            fail("No pude abrir ningún instalador de Android: ${error.message.orEmpty()}")
+            return
+        }
+
         installing = true
         installStartedAt = System.currentTimeMillis()
-        runCatching { DownloadInstaller.install(this, apkFile) }
-            .onSuccess { handler.post(checkInstalled) }
-            .onFailure {
-                installing = false
-                fail("No pude abrir el instalador: ${it.message.orEmpty()}")
-            }
+        detail.text = "${route.getOrNull().orEmpty()} abierto · confirmá la instalación cuando Android lo pida."
+        handler.post(checkInstalled)
     }
 
     private fun targetInstalled(): Boolean {
@@ -213,11 +305,21 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun fail(message: String) {
+        polling = false
+        fallbackDownloading = false
         progress.isIndeterminate = false
         status.text = "No se pudo completar"
         detail.text = message
+        retry.text = "Reintentar"
         retry.visibility = View.VISIBLE
         close.visibility = View.VISIBLE
+        retry.setOnClickListener {
+            if (apkFile.isFile && DownloadInstaller.verifySha256(apkFile, expectedSha256)) {
+                startInstall()
+            } else {
+                startDirectFallback("Reintentando sin depender de DownloadManager")
+            }
+        }
     }
 
     private fun buildUi() {
@@ -232,7 +334,7 @@ class InstallFlowActivity : Activity() {
         }
 
         val eyebrow = TextView(this).apply {
-            text = "STOREAMO · ACTUALIZACIÓN"
+            text = "STOREAMO · INSTALACIÓN"
             setTextColor(COLOR_CYAN)
             textSize = 12f
             setTypeface(typeface, Typeface.BOLD)
@@ -264,10 +366,6 @@ class InstallFlowActivity : Activity() {
             visibility = View.GONE
             backgroundTintList = ColorStateList.valueOf(COLOR_CYAN)
             setTextColor(COLOR_BACKGROUND)
-            setOnClickListener {
-                if (apkFile.isFile && DownloadInstaller.verifySha256(apkFile, expectedSha256)) startInstall()
-                else startPolling()
-            }
         }
         close = Button(this).apply {
             text = "Volver a StoreAMO"
@@ -304,6 +402,8 @@ class InstallFlowActivity : Activity() {
         private const val EXTRA_APP_NAME = "app_name"
         private const val EXTRA_VERSION = "version"
         private const val EXTRA_APPLICATION_ID = "application_id"
+        private const val EXTRA_URL = "url"
+        private const val EXTRA_SIZE_BYTES = "size_bytes"
 
         private val COLOR_BACKGROUND = Color.rgb(6, 16, 28)
         private val COLOR_SURFACE = Color.rgb(18, 45, 67)
@@ -318,6 +418,8 @@ class InstallFlowActivity : Activity() {
                 putExtra(EXTRA_APP_NAME, appName)
                 putExtra(EXTRA_VERSION, pending.artifact.version)
                 putExtra(EXTRA_APPLICATION_ID, pending.artifact.applicationId.orEmpty())
+                putExtra(EXTRA_URL, pending.artifact.url)
+                putExtra(EXTRA_SIZE_BYTES, pending.artifact.sizeBytes ?: -1L)
                 if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
