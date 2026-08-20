@@ -19,6 +19,7 @@ required_installer = [
     "installWithSession",
     "PackageInstaller.SessionParams",
     "fun preflightProblem",
+    "fun install(context: Context, file: File)",
 ]
 missing = [marker for marker in required_installer if marker not in installer]
 assert not missing, f"Missing resilient installer markers: {missing}"
@@ -42,8 +43,10 @@ assert manifest.count('application/vnd.android.package-archive') >= 2
 assert 'androidx.core.content.FileProvider' in manifest
 assert 'storeamo.versionPatch=68' in props
 
-# Preflight errors must be propagated to the visible flow, not swallowed as a Toast + Unit return.
-assert "fun install(context: Context, file: File)" not in installer
+# Legacy screens may still call install(), but it must route through the robust paths
+# and must never swallow a preflight error as a Toast + successful Unit return.
+assert "runCatching { openSystemInstaller(context, file) }" in installer
+assert ".getOrElse { installWithSession(context, file) }" in installer
 assert "Toast.makeText(context, problem" not in installer
 
 print("STOREAMO_INSTALL_PIPELINE_04368_OK")
