@@ -124,7 +124,7 @@ object DownloadInstaller {
                     useCaches = false
                     setRequestProperty("Accept", APK_MIME)
                     setRequestProperty("Cache-Control", "no-cache")
-                    setRequestProperty("User-Agent", "StoreAMO/0.4.3.68")
+                    setRequestProperty("User-Agent", "StoreAMO/0.4.3.69")
                 }
                 try {
                     val code = connection.responseCode
@@ -263,6 +263,8 @@ object DownloadInstaller {
                 val callbackIntent = Intent(context, InstallResultReceiver::class.java).apply {
                     action = InstallResultReceiver.ACTION_INSTALL_STATUS
                     putExtra(InstallResultReceiver.EXTRA_SESSION_ID, sessionId)
+                    putExtra(InstallResultReceiver.EXTRA_PACKAGE_NAME, archive.packageName)
+                    putExtra(InstallResultReceiver.EXTRA_VERSION_NAME, archive.versionName.orEmpty())
                 }
                 val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
                 val statusReceiver = PendingIntent.getBroadcast(
