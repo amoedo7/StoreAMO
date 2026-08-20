@@ -21,6 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Patch uninstall flow and bump StoreAMO
         shell: bash
         run: |
@@ -68,10 +77,9 @@ private fun uninstallInstalledV3(context: Context, packageName: String?) {
         true
     }.getOrDefault(false)
 
-    // Android no permite desinstalación silenciosa a una tienda normal. Si el
-    // desinstalador del sistema no está disponible o rechaza la petición,
-    // abrimos directamente la ficha del sistema para que el usuario use
-    // Desinstalar, como en Ajustes > Información de la aplicación.
+    // Una app normal no puede desinstalar silenciosamente. Primero pedimos al
+    // desinstalador oficial de Android. Si el dispositivo rechaza ese intent,
+    // abrimos Información de la aplicación para que el usuario toque Desinstalar.
     if (!launched) openAppDetailsV3(context, packageName)
 }
 '''
@@ -129,7 +137,7 @@ print('STOREAMO_UNINSTALL_FLOW_OK')
               ci = ci.replace('          python scripts/validate_04365_features.py\n', '          python scripts/validate_04365_features.py\n          python scripts/validate_uninstall_flow.py\n', 1)
           ci = re.sub(
               r'--notes "StoreAMO \$\{VERSION\}:.*"',
-              '--notes "StoreAMO ${VERSION}: corrige Desinstalar. Declara REQUEST_DELETE_PACKAGES para poder abrir el desinstalador oficial de Android y, si ese flujo no puede iniciarse, abre la ficha de Información de la aplicación del sistema para que el usuario pueda eliminarla manualmente."',
+              '--notes "StoreAMO ${VERSION}: corrige Desinstalar. Declara REQUEST_DELETE_PACKAGES para abrir el desinstalador oficial de Android y, si el sistema rechaza ese flujo, abre Información de la aplicación para permitir eliminarla manualmente."',
               ci,
               count=1,
           )
@@ -139,12 +147,34 @@ print('STOREAMO_UNINSTALL_FLOW_OK')
       - name: Validate patched source
         run: |
           set -euo pipefail
+          python scripts/validate_one_tap_update.py
           python scripts/validate_04365_features.py
           python scripts/validate_uninstall_flow.py
-          grep -q 'android.permission.REQUEST_DELETE_PACKAGES' app/src/main/AndroidManifest.xml
-          grep -q 'storeamo.versionPatch=67' gradle.properties
 
-      - name: Commit StoreAMO 0.4.3.67
+      - name: Prepare canonical StoreAMO signing key
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+          cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
+
+      - name: Build StoreAMO 0.4.3.67
+        env:
+          STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
+        run: |
+          set -euo pipefail
+          gradle assembleDebug --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/storeamo-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='430067' versionName='0.4.3.67'" /tmp/storeamo-badging.txt
+          mkdir -p dist
+          cp "$APK" dist/StoreAMO-0.4.3.67.apk
+          sha256sum dist/StoreAMO-0.4.3.67.apk > dist/SHA256SUMS.txt
+          unzip -tqq dist/StoreAMO-0.4.3.67.apk
+          cat dist/SHA256SUMS.txt
+
+      - name: Commit StoreAMO 0.4.3.67 source
         shell: bash
         run: |
           set -euo pipefail
@@ -157,6 +187,28 @@ print('STOREAMO_UNINSTALL_FLOW_OK')
                   scripts/validate_04365_features.py \
                   scripts/validate_uninstall_flow.py \
                   .github/workflows/android-ci.yml
-          git commit -m 'fix: make StoreAMO uninstall flow functional in 0.4.3.67'
+          git commit -m 'StoreAMO 0.4.3.67 · Desinstalar funcional con fallback del sistema'
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Publish StoreAMO 0.4.3.67 self-update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='v0.4.3.67'
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/StoreAMO-0.4.3.67.apk dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/StoreAMO-0.4.3.67.apk dist/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$(git rev-parse HEAD)" \
+              --title 'StoreAMO 0.4.3.67' \
+              --notes 'Corrige Desinstalar: StoreAMO ahora declara REQUEST_DELETE_PACKAGES, abre el desinstalador oficial de Android y, si el dispositivo no puede iniciar ese flujo, abre Información de la aplicación para que el usuario pueda eliminarla desde el sistema.' \
+              --prerelease
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: StoreAMO-0.4.3.67
+          path: dist/*
