@@ -1,0 +1,50 @@
+name: verify StoreAMO 0.4.3.65 release
+
+on:
+  push:
+    branches:
+      - feat/storeamo-news-uninstall
+    paths:
+      - .github/workflows/verify-04365-release.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/storeamo-news-uninstall
+      - name: Wait for main release and verify artifact
+        run: |
+          set -euo pipefail
+          TAG=v0.4.3.65
+          for n in $(seq 1 24); do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              break
+            fi
+            echo "Waiting for $TAG ($n/24)"
+            sleep 10
+          done
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY"
+          rm -rf /tmp/storeamo-release && mkdir -p /tmp/storeamo-release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir /tmp/storeamo-release --pattern 'StoreAMO-0.4.3.65.apk' --pattern 'SHA256SUMS.txt'
+          cd /tmp/storeamo-release
+          sha256sum -c SHA256SUMS.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging StoreAMO-0.4.3.65.apk | tee /tmp/badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='430065' versionName='0.4.3.65'" /tmp/badging.txt
+          echo STOREAMO_04365_RELEASE_OK
+      - name: Remove temporary verifier
+        if: success()
+        run: |
+          rm -f .github/workflows/verify-04365-release.yml
+          git config user.name 'StoreAMO Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore: remove 0.4.3.65 release verifier'
+          git push origin HEAD:feat/storeamo-news-uninstall
