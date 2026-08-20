@@ -22,8 +22,9 @@ import java.io.File
 /**
  * Flujo visible y tolerante a fallos de instalación de StoreAMO.
  *
- * OBTENER/ACTUALIZAR: DownloadManager -> fallback HTTPS directo -> SHA-256 ->
- * permiso de Android -> instalador visible del sistema -> PackageInstaller fallback.
+ * Los errores de instalación quedan deliberadamente fijos en pantalla hasta que
+ * el usuario toque Reintentar o Volver a StoreAMO. Esto permite sacar una captura
+ * completa con el diagnóstico real de Android y enviarla para depuración.
  */
 class InstallFlowActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -48,11 +49,13 @@ class InstallFlowActivity : Activity() {
     private var verifying = false
     private var awaitingPermission = false
     private var installing = false
+    private var usingSessionInstaller = false
     private var installStartedAt = 0L
+    private var persistentErrorVisible = false
 
     private val pollDownload = object : Runnable {
         override fun run() {
-            if (!polling || isFinishing) return
+            if (!polling || isFinishing || persistentErrorVisible) return
             val percent = DownloadInstaller.progressPercent(this@InstallFlowActivity, downloadId)
             if (percent != null) {
                 progress.isIndeterminate = false
@@ -85,7 +88,7 @@ class InstallFlowActivity : Activity() {
 
     private val checkInstalled = object : Runnable {
         override fun run() {
-            if (!installing || isFinishing) return
+            if (!installing || isFinishing || persistentErrorVisible) return
             if (targetInstalled()) {
                 installing = false
                 success()
@@ -93,9 +96,9 @@ class InstallFlowActivity : Activity() {
             }
             if (System.currentTimeMillis() - installStartedAt > 75_000L) {
                 installing = false
-                fail(
-                    "Android no confirmó la instalación. Si la cancelaste o el instalador mostró un error, " +
-                        "tocá Reintentar; StoreAMO volverá a abrir el instalador del sistema."
+                showStaticInstallError(
+                    "Android no confirmó la instalación dentro del tiempo esperado.\n\n" +
+                        diagnosticContext("TIMEOUT")
                 )
                 return
             }
@@ -105,6 +108,19 @@ class InstallFlowActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (intent.getBooleanExtra(EXTRA_STATIC_ERROR, false)) {
+            appName = intent.getStringExtra(EXTRA_APP_NAME).orEmpty().ifBlank { "Aplicación" }
+            targetVersion = intent.getStringExtra(EXTRA_VERSION).orEmpty()
+            artifactUrl = ""
+            expectedSha256 = ""
+            applicationId = intent.getStringExtra(EXTRA_APPLICATION_ID)?.ifBlank { null }
+            buildUi()
+            consumePersistedInstallError()
+            showStaticInstallError(intent.getStringExtra(EXTRA_STATIC_ERROR_MESSAGE).orEmpty())
+            return
+        }
+
         downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1L)
         val filePath = intent.getStringExtra(EXTRA_FILE_PATH).orEmpty()
         expectedSha256 = intent.getStringExtra(EXTRA_SHA256).orEmpty()
@@ -126,8 +142,24 @@ class InstallFlowActivity : Activity() {
         startPolling()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_STATIC_ERROR, false)) {
+            consumePersistedInstallError()
+            showStaticInstallError(intent.getStringExtra(EXTRA_STATIC_ERROR_MESSAGE).orEmpty())
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+
+        consumePersistedInstallError()?.let { persisted ->
+            showStaticInstallError(persisted)
+            return
+        }
+        if (persistentErrorVisible) return
+
         if (awaitingPermission) {
             if (DownloadInstaller.canInstallPackages(this)) {
                 awaitingPermission = false
@@ -142,6 +174,20 @@ class InstallFlowActivity : Activity() {
         } else if (installing && targetInstalled()) {
             installing = false
             success()
+        } else if (installing && !usingSessionInstaller && installStartedAt > 0L) {
+            // ACTION_INSTALL_PACKAGE no siempre devuelve el motivo del fallo. Cuando el
+            // usuario vuelve desde el instalador y el paquete sigue sin instalarse,
+            // reemplazamos cualquier mensaje fugaz del OEM por una pantalla fija.
+            handler.postDelayed({
+                if (installing && !persistentErrorVisible && !targetInstalled()) {
+                    installing = false
+                    showStaticInstallError(
+                        "Android volvió del instalador sin completar la instalación. " +
+                            "Si el instalador mostró un mensaje fugaz, este diagnóstico queda fijo para poder capturarlo.\n\n" +
+                            diagnosticContext("SYSTEM_INSTALLER_RETURNED_WITHOUT_INSTALL")
+                    )
+                }
+            }, 1_500L)
         }
     }
 
@@ -152,6 +198,7 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun startPolling() {
+        persistentErrorVisible = false
         status.text = "Obteniendo $appName"
         detail.text = "Preparando descarga…"
         retry.visibility = View.GONE
@@ -163,10 +210,11 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun startDirectFallback(originalReason: String) {
-        if (fallbackDownloading || verifying || isFinishing) return
+        if (fallbackDownloading || verifying || isFinishing || persistentErrorVisible) return
         fallbackDownloading = true
         status.text = "Probando descarga alternativa"
         detail.text = "$originalReason. StoreAMO cambia automáticamente a HTTPS directo."
+        progress.visibility = View.VISIBLE
         progress.isIndeterminate = true
         retry.visibility = View.GONE
         close.visibility = View.GONE
@@ -189,7 +237,7 @@ class InstallFlowActivity : Activity() {
             val result = runCatching {
                 DownloadInstaller.directDownload(artifact, apkFile) { percent ->
                     runOnUiThread {
-                        if (isFinishing) return@runOnUiThread
+                        if (isFinishing || persistentErrorVisible) return@runOnUiThread
                         if (percent == null) {
                             progress.isIndeterminate = true
                             detail.text = "Descarga HTTPS directa en curso…"
@@ -204,31 +252,40 @@ class InstallFlowActivity : Activity() {
             runOnUiThread {
                 fallbackDownloading = false
                 result.onSuccess {
+                    if (persistentErrorVisible) return@onSuccess
                     progress.isIndeterminate = false
                     progress.progress = 100
                     detail.text = "Descarga alternativa completa · verificando SHA-256"
                     verifyAndContinue()
                 }.onFailure { error ->
-                    fail("Fallaron ambos métodos de descarga. ${error.message.orEmpty()}")
+                    showStaticInstallError(
+                        "Fallaron ambos métodos de descarga. ${error.message.orEmpty()}\n\n" +
+                            diagnosticContext("DOWNLOAD_FAILED")
+                    )
                 }
             }
         }.start()
     }
 
     private fun verifyAndContinue() {
-        if (verifying || fallbackDownloading) return
+        if (verifying || fallbackDownloading || persistentErrorVisible) return
         verifying = true
         status.text = "Verificando integridad"
         detail.text = "Comparando el APK con el SHA-256 publicado por StoreAMO-Catalog."
+        progress.visibility = View.VISIBLE
         progress.isIndeterminate = true
 
         Thread {
             val valid = runCatching { DownloadInstaller.verifySha256(apkFile, expectedSha256) }.getOrDefault(false)
             runOnUiThread {
                 verifying = false
+                if (persistentErrorVisible) return@runOnUiThread
                 if (!valid) {
                     runCatching { apkFile.delete() }
-                    fail("StoreAMO bloqueó la instalación: el SHA-256 no coincide con el catálogo.")
+                    showStaticInstallError(
+                        "StoreAMO bloqueó la instalación: el SHA-256 no coincide con el catálogo.\n\n" +
+                            diagnosticContext("SHA256_MISMATCH")
+                    )
                     return@runOnUiThread
                 }
                 status.text = "Descarga verificada"
@@ -246,7 +303,7 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun startInstall() {
-        if (installing || isFinishing) return
+        if (installing || isFinishing || persistentErrorVisible) return
         if (targetInstalled()) {
             success()
             return
@@ -254,19 +311,22 @@ class InstallFlowActivity : Activity() {
 
         val preflight = DownloadInstaller.preflightProblem(this, apkFile)
         if (preflight != null) {
-            fail(preflight)
+            showStaticInstallError("$preflight\n\n${diagnosticContext("PREFLIGHT_BLOCKED")}")
             return
         }
 
         status.text = "Abriendo instalador de Android"
         detail.text = "APK verificado · Android puede pedir una confirmación de seguridad."
+        progress.visibility = View.VISIBLE
         progress.isIndeterminate = true
         retry.visibility = View.GONE
         close.visibility = View.GONE
+        usingSessionInstaller = false
 
         val route = runCatching {
             DownloadInstaller.openSystemInstaller(this, apkFile)
         }.recoverCatching { primaryError ->
+            usingSessionInstaller = true
             status.text = "Usando instalador alternativo"
             detail.text = "El instalador visible no abrió (${primaryError.message.orEmpty()}). Probando PackageInstaller…"
             DownloadInstaller.installWithSession(this, apkFile)
@@ -275,7 +335,10 @@ class InstallFlowActivity : Activity() {
 
         route.onFailure { error ->
             installing = false
-            fail("No pude abrir ningún instalador de Android: ${error.message.orEmpty()}")
+            showStaticInstallError(
+                "No pude abrir ningún instalador de Android: ${error.message.orEmpty()}\n\n" +
+                    diagnosticContext("NO_INSTALLER_AVAILABLE")
+            )
             return
         }
 
@@ -295,6 +358,8 @@ class InstallFlowActivity : Activity() {
     }
 
     private fun success() {
+        persistentErrorVisible = false
+        progress.visibility = View.VISIBLE
         progress.isIndeterminate = false
         progress.progress = 100
         status.text = "$appName está al día"
@@ -304,22 +369,53 @@ class InstallFlowActivity : Activity() {
         handler.postDelayed({ if (!isFinishing) finish() }, 900)
     }
 
-    private fun fail(message: String) {
+    private fun showStaticInstallError(message: String) {
         polling = false
         fallbackDownloading = false
+        verifying = false
+        awaitingPermission = false
+        installing = false
+        persistentErrorVisible = true
+        handler.removeCallbacks(pollDownload)
+        handler.removeCallbacks(checkInstalled)
+
         progress.isIndeterminate = false
-        status.text = "No se pudo completar"
-        detail.text = message
-        retry.text = "Reintentar"
-        retry.visibility = View.VISIBLE
-        close.visibility = View.VISIBLE
-        retry.setOnClickListener {
-            if (apkFile.isFile && DownloadInstaller.verifySha256(apkFile, expectedSha256)) {
-                startInstall()
-            } else {
-                startDirectFallback("Reintentando sin depender de DownloadManager")
+        progress.visibility = View.GONE
+        status.text = "ERROR DE INSTALACIÓN · CAPTURA ESTA PANTALLA"
+        detail.text = message.ifBlank { "Android no informó un detalle adicional." } +
+            "\n\nEste error queda fijo. No desaparece solo. Sacá una captura y enviala antes de tocar un botón."
+
+        val canRetry = ::apkFile.isInitialized && ::expectedSha256.isInitialized &&
+            expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$")) && apkFile.isFile
+        retry.visibility = if (canRetry) View.VISIBLE else View.GONE
+        retry.text = "Reintentar instalación"
+        if (canRetry) {
+            retry.setOnClickListener {
+                persistentErrorVisible = false
+                progress.visibility = View.VISIBLE
+                if (DownloadInstaller.verifySha256(apkFile, expectedSha256)) {
+                    startInstall()
+                } else {
+                    startDirectFallback("Reintentando sin depender de DownloadManager")
+                }
             }
         }
+        close.visibility = View.VISIBLE
+    }
+
+    private fun diagnosticContext(code: String): String = buildString {
+        append("Código StoreAMO: ").append(code)
+        append("\nApp: ").append(appName)
+        if (targetVersion.isNotBlank()) append("\nVersión: ").append(targetVersion)
+        applicationId?.let { append("\nPaquete: ").append(it) }
+        append("\nStoreAMO: 0.4.3.69")
+    }
+
+    private fun consumePersistedInstallError(): String? {
+        val prefs = getSharedPreferences(PREFS_INSTALL_ERRORS, Context.MODE_PRIVATE)
+        val message = prefs.getString(PREF_LAST_INSTALL_ERROR, null) ?: return null
+        prefs.edit().remove(PREF_LAST_INSTALL_ERROR).apply()
+        return message
     }
 
     private fun buildUi() {
@@ -404,6 +500,10 @@ class InstallFlowActivity : Activity() {
         private const val EXTRA_APPLICATION_ID = "application_id"
         private const val EXTRA_URL = "url"
         private const val EXTRA_SIZE_BYTES = "size_bytes"
+        private const val EXTRA_STATIC_ERROR = "static_install_error"
+        private const val EXTRA_STATIC_ERROR_MESSAGE = "static_install_error_message"
+        private const val PREFS_INSTALL_ERRORS = "storeamo_install_errors"
+        private const val PREF_LAST_INSTALL_ERROR = "last_install_error"
 
         private val COLOR_BACKGROUND = Color.rgb(6, 16, 28)
         private val COLOR_SURFACE = Color.rgb(18, 45, 67)
@@ -423,6 +523,29 @@ class InstallFlowActivity : Activity() {
                 if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+        }
+
+        fun showPersistentInstallError(
+            context: Context,
+            appLabel: String,
+            version: String,
+            applicationId: String,
+            message: String,
+        ) {
+            context.getSharedPreferences(PREFS_INSTALL_ERRORS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_LAST_INSTALL_ERROR, message)
+                .apply()
+
+            val intent = Intent(context, InstallFlowActivity::class.java).apply {
+                putExtra(EXTRA_STATIC_ERROR, true)
+                putExtra(EXTRA_STATIC_ERROR_MESSAGE, message)
+                putExtra(EXTRA_APP_NAME, appLabel.ifBlank { applicationId.ifBlank { "Aplicación" } })
+                putExtra(EXTRA_VERSION, version)
+                putExtra(EXTRA_APPLICATION_ID, applicationId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            runCatching { context.startActivity(intent) }
         }
     }
 }

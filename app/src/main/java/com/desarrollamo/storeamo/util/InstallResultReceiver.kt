@@ -5,12 +5,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
-import android.widget.Toast
+import com.desarrollamo.storeamo.InstallFlowActivity
 
 class InstallResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
+        val sessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1)
+        val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
+        val versionName = intent.getStringExtra(EXTRA_VERSION_NAME).orEmpty()
 
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -24,13 +27,19 @@ class InstallResultReceiver : BroadcastReceiver() {
                     confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(confirmation)
                 } else {
-                    Toast.makeText(context, "Android requiere confirmación para instalar, pero no entregó la pantalla de confirmación.", Toast.LENGTH_LONG).show()
+                    showStaticError(
+                        context = context,
+                        packageName = packageName,
+                        versionName = versionName,
+                        sessionId = sessionId,
+                        status = status,
+                        title = "Android pidió confirmación pero no entregó la pantalla",
+                        androidMessage = message,
+                    )
                 }
             }
 
-            PackageInstaller.STATUS_SUCCESS -> {
-                Toast.makeText(context, "Instalación completada.", Toast.LENGTH_SHORT).show()
-            }
+            PackageInstaller.STATUS_SUCCESS -> Unit
 
             else -> {
                 val readable = when (status) {
@@ -42,14 +51,53 @@ class InstallResultReceiver : BroadcastReceiver() {
                     PackageInstaller.STATUS_FAILURE_STORAGE -> "No hay espacio suficiente"
                     else -> "No se pudo instalar"
                 }
-                val suffix = if (message.isBlank()) "" else ": $message"
-                Toast.makeText(context, "$readable$suffix", Toast.LENGTH_LONG).show()
+                showStaticError(
+                    context = context,
+                    packageName = packageName,
+                    versionName = versionName,
+                    sessionId = sessionId,
+                    status = status,
+                    title = readable,
+                    androidMessage = message,
+                )
             }
         }
+    }
+
+    private fun showStaticError(
+        context: Context,
+        packageName: String,
+        versionName: String,
+        sessionId: Int,
+        status: Int,
+        title: String,
+        androidMessage: String,
+    ) {
+        val diagnostic = buildString {
+            append(title)
+            append("\n\nCódigo Android: ").append(status)
+            append("\nSesión: ").append(sessionId)
+            if (packageName.isNotBlank()) append("\nPaquete: ").append(packageName)
+            if (versionName.isNotBlank()) append("\nVersión: ").append(versionName)
+            append("\nDetalle Android: ")
+            append(androidMessage.ifBlank { "Android no entregó texto adicional." })
+            append("\nCódigo StoreAMO: PACKAGE_INSTALLER_FAILURE")
+            append("\nStoreAMO: 0.4.3.69")
+        }
+
+        InstallFlowActivity.showPersistentInstallError(
+            context = context,
+            appLabel = packageName,
+            version = versionName,
+            applicationId = packageName,
+            message = diagnostic,
+        )
     }
 
     companion object {
         const val ACTION_INSTALL_STATUS = "com.desarrollamo.storeamo.INSTALL_STATUS"
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_PACKAGE_NAME = "package_name"
+        const val EXTRA_VERSION_NAME = "version_name"
     }
 }
