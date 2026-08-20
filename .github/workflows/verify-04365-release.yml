@@ -1,3 +1,4 @@
+# Retry after idempotent main publication was enabled.
 name: verify StoreAMO 0.4.3.65 release
 
 on:
