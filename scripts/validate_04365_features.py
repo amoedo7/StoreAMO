@@ -25,5 +25,15 @@ assert 'Intent.ACTION_DELETE' in main or 'Intent.ACTION_DELETE' in uninstall_flo
 assert 'Desinstalar' in main
 assert 'storeamo.news.v1' in repo
 assert 'Buenas Nuevas' in news
-assert 'Sin tener que entrar a GitHub' in news
+# 0.4.3.72 reorganizes the home and turns Buenas Nuevas into a filterable feed.
+# Validate product behavior/identity instead of pinning one exact marketing sentence.
+assert 'R.drawable.ic_storeamo' in main
+assert 'AmoAmber' in main
+assert 'StoreSymbolStoryV3' in main
+assert 'sin tener que navegar GitHub' in main
+assert 'NewsWindow.WEEK' in news
+assert 'selectedApp' in news
+assert 'NewsKind.DEVELOPMENT' in news
+assert 'NewsKind.PUBLISHED' in news
+assert 'NewsKind.IMPROVEMENTS' in news
 print('STOREAMO_04365_PLUS_FEATURES_OK')
