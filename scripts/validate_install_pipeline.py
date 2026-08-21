@@ -59,10 +59,11 @@ assert 'android.intent.action.INSTALL_PACKAGE' in manifest
 assert 'android.intent.action.VIEW' in manifest
 assert manifest.count('application/vnd.android.package-archive') >= 2
 assert 'androidx.core.content.FileProvider' in manifest
-assert 'storeamo.versionPatch=69' in props
+patch = int(next(line.split('=', 1)[1] for line in props.splitlines() if line.startswith('storeamo.versionPatch=')))
+assert patch >= 69, f"Static install diagnostics require patch >= 69, got {patch}"
 
 # Legacy screens may still call install(), but it must route through the robust paths.
 assert "runCatching { openSystemInstaller(context, file) }" in installer
 assert ".getOrElse { installWithSession(context, file) }" in installer
 
-print("STOREAMO_INSTALL_PIPELINE_04369_STATIC_ERRORS_OK")
+print("STOREAMO_INSTALL_PIPELINE_04369_PLUS_STATIC_ERRORS_OK")
