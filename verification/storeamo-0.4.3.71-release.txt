@@ -1,0 +1,11 @@
+STOREAMO_04371_RELEASE=PASS
+version=0.4.3.71
+version_code=430071
+package=com.desarrollamo.storeamo.debug
+sha256=ac70f48f705824daa83d9778cc0ef4f84574efecca58db8b58f683f828931d6b
+signing_cert_sha256=4b5a966800c3f1837916a55ea89a8be342bcd81a964c78bf0901347c76f4a379
+size_bytes=8984914
+public_url=https://github.com/amoedo7/StoreAMO/releases/download/v0.4.3.71/StoreAMO-0.4.3.71.apk
+migration=DepositAMO legacy signer -> canonical signer, once only
+future_updates=in-place with signer continuity
+run_id=32471878709
