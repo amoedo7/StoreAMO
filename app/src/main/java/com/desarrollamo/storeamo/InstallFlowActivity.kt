@@ -22,9 +22,9 @@ import java.io.File
 /**
  * Flujo visible y tolerante a fallos de instalación de StoreAMO.
  *
- * Los errores de instalación quedan deliberadamente fijos en pantalla hasta que
- * el usuario toque Reintentar o Volver a StoreAMO. Esto permite sacar una captura
- * completa con el diagnóstico real de Android y enviarla para depuración.
+ * Los errores permanecen visibles hasta una acción del usuario. El único cambio
+ * de firma que StoreAMO puede migrar es el legacy conocido de DepositAMO 0.1.0;
+ * cualquier otra discrepancia continúa bloqueada por seguridad.
  */
 class InstallFlowActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -48,6 +48,7 @@ class InstallFlowActivity : Activity() {
     private var fallbackDownloading = false
     private var verifying = false
     private var awaitingPermission = false
+    private var awaitingSignatureMigration = false
     private var installing = false
     private var usingSessionInstaller = false
     private var installStartedAt = 0L
@@ -131,7 +132,8 @@ class InstallFlowActivity : Activity() {
         artifactSizeBytes = intent.getLongExtra(EXTRA_SIZE_BYTES, -1L).takeIf { it > 0L }
 
         if (
-            downloadId < 0 || filePath.isBlank() || !expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$")) ||
+            downloadId < 0 || filePath.isBlank() ||
+            !expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$")) ||
             !artifactUrl.startsWith("https://")
         ) {
             finish()
@@ -158,6 +160,23 @@ class InstallFlowActivity : Activity() {
             showStaticInstallError(persisted)
             return
         }
+
+        if (awaitingSignatureMigration) {
+            val packageName = applicationId
+            awaitingSignatureMigration = false
+            if (packageName != null && !DownloadInstaller.isPackageInstalled(this, packageName)) {
+                persistentErrorVisible = false
+                status.text = "Migración completada"
+                detail.text = "La firma legacy ya no está instalada · continuando con $appName $targetVersion."
+                progress.visibility = View.VISIBLE
+                progress.isIndeterminate = true
+                startInstall()
+            } else {
+                showKnownSignatureMigration(cancelled = true)
+            }
+            return
+        }
+
         if (persistentErrorVisible) return
 
         if (awaitingPermission) {
@@ -175,9 +194,6 @@ class InstallFlowActivity : Activity() {
             installing = false
             success()
         } else if (installing && !usingSessionInstaller && installStartedAt > 0L) {
-            // ACTION_INSTALL_PACKAGE no siempre devuelve el motivo del fallo. Cuando el
-            // usuario vuelve desde el instalador y el paquete sigue sin instalarse,
-            // reemplazamos cualquier mensaje fugaz del OEM por una pantalla fija.
             handler.postDelayed({
                 if (installing && !persistentErrorVisible && !targetInstalled()) {
                     installing = false
@@ -309,6 +325,12 @@ class InstallFlowActivity : Activity() {
             return
         }
 
+        val migration = DownloadInstaller.knownOneTimeSignatureMigration(this, apkFile)
+        if (migration != null) {
+            showKnownSignatureMigration(cancelled = false)
+            return
+        }
+
         val preflight = DownloadInstaller.preflightProblem(this, apkFile)
         if (preflight != null) {
             showStaticInstallError("$preflight\n\n${diagnosticContext("PREFLIGHT_BLOCKED")}")
@@ -369,11 +391,66 @@ class InstallFlowActivity : Activity() {
         handler.postDelayed({ if (!isFinishing) finish() }, 900)
     }
 
+    private fun showKnownSignatureMigration(cancelled: Boolean) {
+        polling = false
+        fallbackDownloading = false
+        verifying = false
+        awaitingPermission = false
+        installing = false
+        persistentErrorVisible = true
+        handler.removeCallbacks(pollDownload)
+        handler.removeCallbacks(checkInstalled)
+
+        progress.isIndeterminate = false
+        progress.visibility = View.GONE
+        status.text = if (cancelled) "MIGRACIÓN PENDIENTE" else "MIGRACIÓN ÚNICA DE FIRMA"
+        detail.text = buildString {
+            if (cancelled) append("La desinstalación anterior no se completó.\n\n")
+            append("Detectamos exactamente la build legacy de DepositAMO 0.1.0 que fue publicada con una clave temporal. ")
+            append("Esa clave privada no existe, por lo que Android no permite convertirla en una actualización firmada con la identidad canónica.\n\n")
+            append("Este paso ocurre UNA SOLA VEZ: Android eliminará la build legacy y StoreAMO instalará automáticamente la línea canónica. ")
+            append("Después, las versiones siguientes se actualizan normalmente sin desinstalar.\n\n")
+            append("Importante: Android puede borrar los datos privados de la build legacy al desinstalarla.\n\n")
+            append(diagnosticContext("KNOWN_LEGACY_SIGNER_MIGRATION"))
+        }
+
+        retry.visibility = View.VISIBLE
+        retry.text = "MIGRAR UNA VEZ Y ACTUALIZAR"
+        retry.setOnClickListener {
+            val packageName = applicationId
+            if (packageName.isNullOrBlank()) {
+                showStaticInstallError(
+                    "No hay package válido para completar la migración.\n\n" +
+                        diagnosticContext("MIGRATION_PACKAGE_MISSING")
+                )
+                return@setOnClickListener
+            }
+            persistentErrorVisible = false
+            awaitingSignatureMigration = true
+            retry.visibility = View.GONE
+            close.visibility = View.GONE
+            progress.visibility = View.VISIBLE
+            progress.isIndeterminate = true
+            status.text = "Migrando firma legacy"
+            detail.text = "Android va a pedir confirmar la eliminación de la build antigua. Al volver, StoreAMO continuará solo con la instalación nueva."
+            runCatching { DownloadInstaller.requestOfficialUninstall(this, packageName) }
+                .onFailure { error ->
+                    awaitingSignatureMigration = false
+                    showStaticInstallError(
+                        "No se pudo abrir el desinstalador oficial: ${error.message.orEmpty()}\n\n" +
+                            diagnosticContext("MIGRATION_UNINSTALLER_FAILED")
+                    )
+                }
+        }
+        close.visibility = View.VISIBLE
+    }
+
     private fun showStaticInstallError(message: String) {
         polling = false
         fallbackDownloading = false
         verifying = false
         awaitingPermission = false
+        awaitingSignatureMigration = false
         installing = false
         persistentErrorVisible = true
         handler.removeCallbacks(pollDownload)
@@ -408,7 +485,7 @@ class InstallFlowActivity : Activity() {
         append("\nApp: ").append(appName)
         if (targetVersion.isNotBlank()) append("\nVersión: ").append(targetVersion)
         applicationId?.let { append("\nPaquete: ").append(it) }
-        append("\nStoreAMO: 0.4.3.69")
+        append("\nStoreAMO: ").append(BuildConfig.VERSION_NAME)
     }
 
     private fun consumePersistedInstallError(): String? {
@@ -483,7 +560,10 @@ class InstallFlowActivity : Activity() {
         setContentView(root)
     }
 
-    private fun matchWrap() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+    private fun matchWrap() = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+    )
 
     private fun space(height: Int) = View(this).apply {
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
