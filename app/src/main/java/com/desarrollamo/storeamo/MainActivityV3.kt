@@ -122,13 +122,11 @@ private fun openInstalledV3(context: Context, packageName: String?) {
 }
 
 private fun uninstallInstalledV3(context: Context, packageName: String?) {
-    if (packageName.isNullOrBlank()) return
-    runCatching {
-        context.startActivity(
-            Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
+    UninstallFlowActivity.launch(context, packageName)
+}
+
+private fun openAppInfoV3(context: Context, packageName: String?) {
+    UninstallFlowActivity.openInfo(context, packageName)
 }
 
 private fun glyphV3(app: StoreApp): String = when (app.id) {
@@ -361,6 +359,7 @@ private fun StoreAmoV3(resumeToken: Int) {
                                 installed = installed,
                                 onOpen = { selected = app },
                                 onUninstall = { uninstallInstalledV3(context, artifact.applicationId) },
+                                onInfo = { openAppInfoV3(context, artifact.applicationId) },
                             )
                         }
                     }
@@ -530,6 +529,7 @@ private fun InstalledCardV3(
     installed: String,
     onOpen: () -> Unit,
     onUninstall: () -> Unit,
+    onInfo: () -> Unit,
 ) {
     val upToDate = installed == artifact.version
     Surface(onClick = onOpen, shape = RoundedCornerShape(18.dp), color = AmoSurface) {
@@ -539,8 +539,13 @@ private fun InstalledCardV3(
                 Column(Modifier.weight(1f)) { Text(app.name, fontWeight = FontWeight.Black); Text("Instalada · $installed", color = AmoMuted, fontSize = 10.sp) }
                 Text(if (upToDate) "Al día" else "Actualizar", color = if (upToDate) AmoGreen else AmoCyan, fontSize = 10.sp, fontWeight = FontWeight.Black)
             }
-            OutlinedButton(onClick = onUninstall, modifier = Modifier.fillMaxWidth()) {
-                Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onUninstall, modifier = Modifier.weight(1f)) {
+                    Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+                }
+                OutlinedButton(onClick = onInfo, modifier = Modifier.width(58.dp)) {
+                    Text("ⓘ", color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                }
             }
         }
     }
@@ -636,9 +641,15 @@ private fun AppSheetV3(app: StoreApp, context: Context, verifiedOnly: Boolean, o
                     }
                     Button(onClick = { onDownload(artifact) }, enabled = installed == artifact.version || !(verifiedOnly && !artifact.verified), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground)) { Text(actionLabelV3(context, artifact, verifiedOnly), fontWeight = FontWeight.Black) }
                     if (installed != null) {
-                        OutlinedButton(onClick = { uninstallInstalledV3(context, artifact.applicationId) }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { uninstallInstalledV3(context, artifact.applicationId) }, modifier = Modifier.weight(1f)) {
+                                Text("Desinstalar", color = AmoPink, fontWeight = FontWeight.Black)
+                            }
+                            OutlinedButton(onClick = { openAppInfoV3(context, artifact.applicationId) }, modifier = Modifier.width(58.dp)) {
+                                Text("ⓘ", color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                            }
                         }
+                        Text("ⓘ abre Info. de la aplicación de Android. Si el desinstalador directo no completa el proceso, StoreAMO también cae automáticamente en esa pantalla.", color = AmoMuted, fontSize = 9.sp)
                     }
                 }
             }
