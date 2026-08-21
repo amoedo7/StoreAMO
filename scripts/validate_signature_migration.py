@@ -21,6 +21,11 @@ assert "MIGRAR UNA VEZ Y ACTUALIZAR" in flow
 assert "awaitingSignatureMigration" in flow
 assert "Después, las versiones siguientes se actualizan normalmente sin desinstalar" in flow
 assert "BuildConfig.VERSION_NAME" in flow
-assert "storeamo.versionPatch=71" in props
-assert 'test "$PATCH" = "71"' in ci
-print("STOREAMO_SIGNATURE_MIGRATION_04371_OK")
+
+# The one-time migration was introduced in 0.4.3.71 and must survive every
+# later 0.4.3.x build. Keep this regression test version-aware instead of
+# freezing the whole release line at patch 71.
+patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
+assert patch >= 71
+assert f'test "$PATCH" = "{patch}"' in ci
+print("STOREAMO_SIGNATURE_MIGRATION_04371_PLUS_OK")

@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +63,7 @@ import com.desarrollamo.storeamo.data.CatalogRepository
 import com.desarrollamo.storeamo.data.SelfUpdateRepository
 import com.desarrollamo.storeamo.model.StoreApp
 import com.desarrollamo.storeamo.model.StoreArtifact
+import com.desarrollamo.storeamo.theme.AmoAmber
 import com.desarrollamo.storeamo.theme.AmoBackground
 import com.desarrollamo.storeamo.theme.AmoCyan
 import com.desarrollamo.storeamo.theme.AmoGreen
@@ -253,8 +256,8 @@ private fun StoreAmoV3(resumeToken: Int) {
                     NavigationBarItem(
                         selected = tab == item,
                         onClick = { tab = item },
-                        icon = { Text(item.glyph, fontWeight = FontWeight.Black) },
-                        label = { Text(item.label, fontSize = 10.sp, maxLines = 1) },
+                        icon = { Text(item.glyph, fontWeight = FontWeight.Black, color = if (tab == item) AmoAmber else AmoMuted) },
+                        label = { Text(item.label, fontSize = 10.sp, maxLines = 1, color = if (tab == item) AmoAmber else AmoMuted) },
                     )
                 }
             }
@@ -367,6 +370,7 @@ private fun StoreAmoV3(resumeToken: Int) {
 
                 TabV3.SETTINGS -> {
                     item { PageHeaderV3("STOREAMO", "Ajustes", "Personalizá la tienda y controlá qué nivel de confianza aceptás.") }
+                    item { StoreSymbolStoryV3() }
                     item { ThemeSelectorV3(themeStyle) {
                         themeStyle = it
                         prefs.edit().putString("theme_style", it.key).apply()
@@ -417,12 +421,21 @@ private fun StoreAmoV3(resumeToken: Int) {
 
 @Composable
 private fun BrandV3(onSettings: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().height(62.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(AmoCyan, AmoViolet, AmoPink))), contentAlignment = Alignment.Center) {
-                Text("AMO", color = AmoBackground, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            Surface(shape = RoundedCornerShape(14.dp), color = AmoSurface2, modifier = Modifier.size(46.dp)) {
+                Box(Modifier.padding(5.dp), contentAlignment = Alignment.Center) {
+                    Image(painter = painterResource(R.drawable.ic_storeamo), contentDescription = "Logo de StoreAMO", modifier = Modifier.fillMaxSize())
+                }
             }
-            Spacer(Modifier.width(10.dp)); Text("Store", fontWeight = FontWeight.Black, fontSize = 22.sp); Text("AMO", color = AmoPink, fontWeight = FontWeight.Black, fontSize = 22.sp)
+            Spacer(Modifier.width(11.dp))
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Store", fontWeight = FontWeight.Black, fontSize = 23.sp)
+                    Text("AMO", color = AmoPink, fontWeight = FontWeight.Black, fontSize = 23.sp)
+                }
+                Text("DesarrollAMO · Ecosistema", color = AmoMuted, fontSize = 10.sp)
+            }
         }
         Surface(onClick = onSettings, shape = CircleShape, color = AmoSurface2, modifier = Modifier.size(42.dp)) { Box(contentAlignment = Alignment.Center) { Text("⚙") } }
     }
@@ -430,11 +443,19 @@ private fun BrandV3(onSettings: () -> Unit) {
 
 @Composable
 private fun HeroV3(loading: Boolean, error: String?, refresh: () -> Unit) {
-    Surface(shape = RoundedCornerShape(28.dp), color = AmoSurface) {
-        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .background(Brush.linearGradient(listOf(AmoSurface, AmoSurface2, AmoAmber.copy(alpha = .20f))))
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
             Text("DESARROLLAMO · ECOSISTEMA", color = AmoCyan, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
             Text("Todo lo que construimos,\nen un solo lugar.", fontSize = 32.sp, lineHeight = 34.sp, fontWeight = FontWeight.Black)
             Text("Instalá lo que ya funciona, ejecutá herramientas y mirá aparte lo que estamos preparando.", color = AmoMuted, fontSize = 13.sp)
+            Surface(shape = RoundedCornerShape(99.dp), color = AmoAmber.copy(alpha = .12f)) {
+                Text("✦ v${BuildConfig.VERSION_NAME}", color = AmoAmber, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp))
+            }
             if (loading) Text("Actualizando catálogo…", color = AmoCyan, fontSize = 11.sp)
             if (error != null) Row(verticalAlignment = Alignment.CenterVertically) { Text(error, color = AmoPink, modifier = Modifier.weight(1f), fontSize = 11.sp); TextButton(onClick = refresh) { Text("Reintentar") } }
         }
@@ -443,7 +464,15 @@ private fun HeroV3(loading: Boolean, error: String?, refresh: () -> Unit) {
 
 @Composable
 private fun SearchV3(value: String, onChange: (String) -> Unit) {
-    TextField(value = value, onValueChange = onChange, placeholder = { Text("Buscar apps") }, leadingIcon = { Text("⌕", fontSize = 22.sp) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp))
+    TextField(
+        value = value,
+        onValueChange = onChange,
+        placeholder = { Text("Buscar apps, herramientas o novedades…") },
+        leadingIcon = { Text("⌕", fontSize = 22.sp, color = AmoCyan) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+    )
 }
 
 @Composable
@@ -459,18 +488,37 @@ private fun GoodNewsEntryV3(context: Context) {
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .background(Brush.linearGradient(listOf(AmoSurface2, AmoCyan.copy(alpha = .16f), AmoPink.copy(alpha = .15f))))
+                .background(Brush.linearGradient(listOf(AmoSurface2, AmoCyan.copy(alpha = .14f), AmoAmber.copy(alpha = .18f))))
                 .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            Text("BUENAS NUEVAS", color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-            Text("El ecosistema se está moviendo", fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("BUENAS NUEVAS", color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
+                    Text("El ecosistema se está moviendo", fontSize = 22.sp, fontWeight = FontWeight.Black)
+                }
+                Image(painter = painterResource(R.drawable.ic_storeamo), contentDescription = null, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)))
+            }
             Text("Versiones, mejoras y apps que están avanzando, explicadas acá sin tener que navegar GitHub.", color = AmoMuted, fontSize = 12.sp)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                PreviewFilterChipV3("7 días", selected = true)
+                PreviewFilterChipV3("Por app")
+                PreviewFilterChipV3("En desarrollo")
+                PreviewFilterChipV3("Publicadas")
+                PreviewFilterChipV3("Mejoras")
+            }
             Button(
                 onClick = { context.startActivity(Intent(context, GoodNewsActivity::class.java)) },
-                colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground),
-            ) { Text("Ver Buenas Nuevas", fontWeight = FontWeight.Black) }
+                colors = ButtonDefaults.buttonColors(containerColor = AmoAmber, contentColor = AmoBackground),
+            ) { Text("Ver Buenas Nuevas  ›", fontWeight = FontWeight.Black) }
         }
+    }
+}
+
+@Composable
+private fun PreviewFilterChipV3(label: String, selected: Boolean = false) {
+    Surface(shape = RoundedCornerShape(99.dp), color = if (selected) AmoAmber.copy(alpha = .18f) else AmoSurface.copy(alpha = .72f)) {
+        Text(label, color = if (selected) AmoAmber else AmoMuted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Black else FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
     }
 }
 
@@ -483,13 +531,13 @@ private fun PageHeaderV3(kicker: String, title: String, body: String) {
 private fun FeaturedV3(app: StoreApp, context: Context, verifiedOnly: Boolean, onOpen: () -> Unit) {
     val artifact = androidArtifactV3(app)
     Card(onClick = onOpen, shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(AmoSurface2, AmoViolet.copy(alpha = .42f), AmoPink.copy(alpha = .30f)))).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(AmoSurface2, AmoCyan.copy(alpha = .18f), AmoAmber.copy(alpha = .28f)))).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(if (app.audience == "team") "EQUIPO DESARROLLAMO" else "DESTACADA", color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black)
                 Text(app.name, fontSize = 30.sp, fontWeight = FontWeight.Black); Text(app.tagline, color = AmoMuted, fontSize = 13.sp)
-                Text(actionLabelV3(context, artifact, verifiedOnly), color = AmoCyan, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                Text(actionLabelV3(context, artifact, verifiedOnly), color = AmoAmber, fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
-            Box(Modifier.size(84.dp).clip(RoundedCornerShape(26.dp)).background(Brush.linearGradient(listOf(AmoCyan, AmoViolet, AmoPink))), contentAlignment = Alignment.Center) { Text(glyphV3(app), color = AmoBackground, fontSize = 30.sp, fontWeight = FontWeight.Black) }
+            Box(Modifier.size(84.dp).clip(RoundedCornerShape(26.dp)).background(Brush.linearGradient(listOf(AmoCyan, AmoPink, AmoAmber))), contentAlignment = Alignment.Center) { Text(glyphV3(app), color = AmoBackground, fontSize = 30.sp, fontWeight = FontWeight.Black) }
         }
     }
 }
@@ -582,6 +630,31 @@ private fun NoticeV3(text: String, installable: Boolean, onInstall: () -> Unit) 
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, color = if (text.contains("Bloqueada") || text.contains("falló")) AmoPink else AmoCyan, fontSize = 11.sp, modifier = Modifier.weight(1f))
             if (installable) Button(onClick = onInstall) { Text("Instalar") }
+        }
+    }
+}
+
+@Composable
+private fun StoreSymbolStoryV3() {
+    Surface(shape = RoundedCornerShape(22.dp), color = AmoSurface) {
+        Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(16.dp), color = AmoSurface2, modifier = Modifier.size(62.dp)) {
+                    Image(painter = painterResource(R.drawable.ic_storeamo), contentDescription = null, modifier = Modifier.padding(6.dp))
+                }
+                Spacer(Modifier.width(13.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("EL SÍMBOLO DE STOREAMO", color = AmoAmber, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    Text("Cuatro piezas. Un ecosistema.", fontSize = 19.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Text(
+                "El dibujo nació como una caja abierta en cuatro módulos: apps, herramientas, novedades y proyectos que todavía están creciendo. El cruce del centro no los separa: los ordena y los conecta. Por eso StoreAMO es la puerta donde todo lo que construye DesarrollAMO se reúne, se verifica y llega a tus manos.",
+                color = AmoMuted,
+                fontSize = 11.sp,
+                lineHeight = 17.sp,
+            )
+            Text("Cian = tecnología · violeta = exploración · rosa = creación · blanco = listo para usar.", color = AmoCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
