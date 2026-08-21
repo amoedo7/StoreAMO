@@ -31,6 +31,7 @@ jobs:
           python scripts/validate_install_pipeline.py
           python scripts/validate_uninstall_04370.py
           python scripts/validate_signature_migration.py
+          python scripts/validate_04373_design.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -41,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "72"
+          test "$PATCH" = "73"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -77,5 +78,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION}: renueva el inicio con identidad visual propia, integra el logo real dentro de la app, sustituye acentos violetas superiores por el ámbar solar de DesarrollAMO y añade una historia para el símbolo de StoreAMO. Buenas Nuevas incorpora filtros funcionales por tiempo, app y tipo/estado de noticia. Conserva el flujo robusto de instalación, actualización y verificación SHA-256." \
+            --notes "StoreAMO ${VERSION} · Solar Calm: el equipo de diseño baja ruido y sube jerarquía con una paleta más profunda, ámbar solar como foco global, violeta relegado a identidad secundaria, tipografía y radios coherentes, barras Android integradas y un icono StoreAMO refinado con halo solar. No cambia el flujo robusto de instalación, actualización, firma ni verificación SHA-256." \
             --prerelease
