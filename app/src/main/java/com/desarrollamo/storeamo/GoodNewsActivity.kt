@@ -3,6 +3,7 @@ package com.desarrollamo.storeamo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +15,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.desarrollamo.storeamo.data.NewsRepository
 import com.desarrollamo.storeamo.model.StoreNewsItem
+import com.desarrollamo.storeamo.theme.AmoAmber
 import com.desarrollamo.storeamo.theme.AmoBackground
 import com.desarrollamo.storeamo.theme.AmoCyan
 import com.desarrollamo.storeamo.theme.AmoGreen
@@ -48,6 +53,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
+
+private enum class NewsWindow(val label: String, val maxHours: Long?) {
+    TODAY("Hoy", 24),
+    WEEK("7 días", 24 * 7),
+    MONTH("30 días", 24 * 30),
+    ALL("Todo", null),
+}
+
+private enum class NewsKind(val label: String) {
+    ALL("Todas"),
+    DEVELOPMENT("En desarrollo"),
+    PUBLISHED("Publicadas"),
+    IMPROVEMENTS("Mejoras"),
+}
 
 class GoodNewsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +85,9 @@ private fun GoodNewsScreen(onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshToken by remember { mutableIntStateOf(0) }
+    var window by remember { mutableStateOf(NewsWindow.WEEK) }
+    var selectedApp by remember { mutableStateOf<String?>(null) }
+    var kind by remember { mutableStateOf(NewsKind.ALL) }
 
     LaunchedEffect(refreshToken) {
         loading = true
@@ -74,6 +96,13 @@ private fun GoodNewsScreen(onBack: () -> Unit) {
             .onSuccess { items = it }
             .onFailure { error = "No pude cargar Buenas Nuevas: ${it.message.orEmpty()}" }
         loading = false
+    }
+
+    val appNames = remember(items) { items.map { it.appName }.distinct().sorted() }
+    val filteredItems = items.filter { item ->
+        isInsideWindow(item.publishedAt, window) &&
+            (selectedApp == null || item.appName == selectedApp) &&
+            matchesKind(item, kind)
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = AmoBackground) {
@@ -94,13 +123,29 @@ private fun GoodNewsScreen(onBack: () -> Unit) {
                     Text("ECOSISTEMA EN MOVIMIENTO", color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 11.sp)
                     Text("Buenas Nuevas", color = AmoText, fontWeight = FontWeight.Black, fontSize = 38.sp)
                     Text(
-                        "Cambios, nuevas versiones y aplicaciones que están avanzando. Sin tener que entrar a GitHub.",
+                        "Cambios, nuevas versiones y aplicaciones que están avanzando. Ahora podés mirar sólo lo que te interesa.",
                         color = AmoMuted,
                         fontSize = 16.sp,
                         lineHeight = 23.sp,
                     )
                 }
             }
+
+            if (!loading && error == null && items.isNotEmpty()) {
+                item {
+                    NewsFilters(
+                        window = window,
+                        onWindow = { window = it },
+                        appNames = appNames,
+                        selectedApp = selectedApp,
+                        onApp = { selectedApp = it },
+                        kind = kind,
+                        onKind = { kind = it },
+                        resultCount = filteredItems.size,
+                    )
+                }
+            }
+
             if (loading) {
                 item { StatusNewsCard("Buscando novedades…", "StoreAMO está consultando la actividad pública más reciente.") }
             } else if (error != null) {
@@ -115,8 +160,10 @@ private fun GoodNewsScreen(onBack: () -> Unit) {
                 }
             } else if (items.isEmpty()) {
                 item { StatusNewsCard("Todavía no hay novedades", "Cuando una aplicación avance, aparezca una versión o cambie su estado, lo vas a ver acá.") }
+            } else if (filteredItems.isEmpty()) {
+                item { StatusNewsCard("No hay noticias con esos filtros", "Probá ampliar el período, elegir otra app o volver a Todas.") }
             } else {
-                items(items, key = { it.id }) { item -> GoodNewsCard(item) }
+                items(filteredItems, key = { it.id }) { item -> GoodNewsCard(item) }
                 item {
                     Text(
                         "Los repositorios privados sólo muestran actividad sanitizada. StoreAMO nunca publica su código ni mensajes privados de commit.",
@@ -129,6 +176,91 @@ private fun GoodNewsScreen(onBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun NewsFilters(
+    window: NewsWindow,
+    onWindow: (NewsWindow) -> Unit,
+    appNames: List<String>,
+    selectedApp: String?,
+    onApp: (String?) -> Unit,
+    kind: NewsKind,
+    onKind: (NewsKind) -> Unit,
+    resultCount: Int,
+) {
+    Surface(shape = RoundedCornerShape(24.dp), color = AmoSurface) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("FILTRAR BUENAS NUEVAS", color = AmoCyan, fontWeight = FontWeight.Black, fontSize = 10.sp)
+                    Text("Encontrá lo importante sin perderte en el feed.", color = AmoMuted, fontSize = 11.sp)
+                }
+                Surface(shape = RoundedCornerShape(99.dp), color = AmoAmber.copy(alpha = .15f)) {
+                    Text("$resultCount", color = AmoAmber, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+            }
+
+            FilterRowLabel("TIEMPO")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                NewsWindow.entries.forEach { option ->
+                    FilterChip(
+                        selected = window == option,
+                        onClick = { onWindow(option) },
+                        label = { Text(option.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AmoAmber.copy(alpha = .18f),
+                            selectedLabelColor = AmoAmber,
+                        ),
+                    )
+                }
+            }
+
+            FilterRowLabel("APP")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                FilterChip(
+                    selected = selectedApp == null,
+                    onClick = { onApp(null) },
+                    label = { Text("Todas") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = AmoAmber.copy(alpha = .18f),
+                        selectedLabelColor = AmoAmber,
+                    ),
+                )
+                appNames.forEach { appName ->
+                    FilterChip(
+                        selected = selectedApp == appName,
+                        onClick = { onApp(appName) },
+                        label = { Text(appName) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AmoAmber.copy(alpha = .18f),
+                            selectedLabelColor = AmoAmber,
+                        ),
+                    )
+                }
+            }
+
+            FilterRowLabel("TIPO")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                NewsKind.entries.forEach { option ->
+                    FilterChip(
+                        selected = kind == option,
+                        onClick = { onKind(option) },
+                        label = { Text(option.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AmoAmber.copy(alpha = .18f),
+                            selectedLabelColor = AmoAmber,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterRowLabel(text: String) {
+    Text(text, color = AmoMuted, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
 }
 
 @Composable
@@ -146,8 +278,12 @@ private fun GoodNewsCard(item: StoreNewsItem) {
             if (item.summary.isNotBlank()) {
                 Text(item.summary, color = AmoMuted, fontSize = 14.sp, lineHeight = 20.sp)
             }
-            if (item.sourceVisibility == "private") {
-                Text("Actividad pública sanitizada", color = AmoGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NewsTypePill(item.type)
+                if (item.sourceVisibility == "private") {
+                    Spacer(Modifier.width(8.dp))
+                    Text("Actividad pública sanitizada", color = AmoGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -167,6 +303,13 @@ private fun StatusPill(status: String) {
 }
 
 @Composable
+private fun NewsTypePill(type: String) {
+    Surface(shape = RoundedCornerShape(99.dp), color = AmoAmber.copy(alpha = .12f)) {
+        Text(newsTypeLabel(type), color = AmoAmber, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
 private fun StatusNewsCard(title: String, body: String) {
     Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = AmoSurface)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -174,6 +317,33 @@ private fun StatusNewsCard(title: String, body: String) {
             Text(body, color = AmoMuted, lineHeight = 20.sp)
         }
     }
+}
+
+private fun isInsideWindow(value: String, window: NewsWindow): Boolean {
+    val maxHours = window.maxHours ?: return true
+    return runCatching {
+        val elapsed = Duration.between(Instant.parse(value), Instant.now()).toHours()
+        elapsed in 0..maxHours
+    }.getOrDefault(true)
+}
+
+private fun matchesKind(item: StoreNewsItem, kind: NewsKind): Boolean {
+    if (kind == NewsKind.ALL) return true
+    val text = "${item.type} ${item.title} ${item.summary}".lowercase()
+    return when (kind) {
+        NewsKind.ALL -> true
+        NewsKind.DEVELOPMENT -> item.status == "development"
+        NewsKind.PUBLISHED -> item.status == "candidate" || item.status == "verified" || text.contains("release") || text.contains("publicad")
+        NewsKind.IMPROVEMENTS -> text.contains("mejora") || text.contains("improvement") || text.contains("enhancement") || text.contains("feature") || text.contains("fix")
+    }
+}
+
+private fun newsTypeLabel(type: String): String = when (type.lowercase()) {
+    "release" -> "VERSIÓN"
+    "improvement", "enhancement" -> "MEJORA"
+    "app", "new_app" -> "NUEVA APP"
+    "status" -> "ESTADO"
+    else -> type.replace('_', ' ').uppercase()
 }
 
 private fun relativeTime(value: String): String {
