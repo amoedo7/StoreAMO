@@ -211,3 +211,5 @@ jobs:
           git commit -m 'StoreAMO 0.4.3.71 · migración única de firma y updates reales'
           git pull --rebase origin fix/signature-migration-once
           git push origin HEAD:fix/signature-migration-once
+
+# retrigger: 2026-08-21 signing migration completion
