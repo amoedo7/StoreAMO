@@ -27,5 +27,6 @@ for marker in [
     assert marker in flow, f"missing uninstall-flow marker: {marker}"
 
 assert '.UninstallFlowActivity' in manifest
-assert 'storeamo.versionPatch=70' in props
-print("STOREAMO_UNINSTALL_04370_OK")
+patch = int(next(line.split('=', 1)[1] for line in props.splitlines() if line.startswith('storeamo.versionPatch=')))
+assert patch >= 70, f"Uninstall flow requires patch >= 70, got {patch}"
+print("STOREAMO_UNINSTALL_04370_PLUS_OK")
