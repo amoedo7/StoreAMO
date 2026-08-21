@@ -28,7 +28,17 @@ object DownloadInstaller {
     private const val APK_MIME = "application/vnd.android.package-archive"
     private const val MAX_REDIRECTS = 6
 
+    private const val DEPOSITAMO_PACKAGE = "com.desarrollamo.depositamo"
+    private const val DEPOSITAMO_LEGACY_CERT = "653719d327467463b0081e52c330e1859d91876160e82fbd5068aef3bbb6f7b6"
+    private const val DEPOSITAMO_CANONICAL_CERT = "2b7ab55c5337735cad89c8006d94bf929244db21277fc9b7bd053f6ab8c5f685"
+
     data class Pending(val id: Long, val file: File, val artifact: StoreArtifact)
+
+    data class OneTimeSignatureMigration(
+        val packageName: String,
+        val installedCertSha256: String,
+        val incomingCertSha256: String,
+    )
 
     fun start(context: Context, appName: String, artifact: StoreArtifact): Pending {
         require(artifact.platform == "android") { "Sólo los APK Android se instalan desde la app Android" }
@@ -124,7 +134,7 @@ object DownloadInstaller {
                     useCaches = false
                     setRequestProperty("Accept", APK_MIME)
                     setRequestProperty("Cache-Control", "no-cache")
-                    setRequestProperty("User-Agent", "StoreAMO/0.4.3.69")
+                    setRequestProperty("User-Agent", "StoreAMO/${com.desarrollamo.storeamo.BuildConfig.VERSION_NAME}")
                 }
                 try {
                     val code = connection.responseCode
@@ -288,6 +298,45 @@ object DownloadInstaller {
             .getOrElse { installWithSession(context, file) }
     }
 
+    fun knownOneTimeSignatureMigration(context: Context, file: File): OneTimeSignatureMigration? {
+        if (!file.isFile) return null
+        val pm = context.packageManager
+        val archive = archiveInfo(pm, file) ?: return null
+        if (archive.packageName != DEPOSITAMO_PACKAGE) return null
+        val installed = installedInfo(pm, archive.packageName) ?: return null
+        val incoming = signerDigests(archive)
+        val current = signerDigests(installed)
+        if (DEPOSITAMO_CANONICAL_CERT !in incoming || DEPOSITAMO_LEGACY_CERT !in current) return null
+        return OneTimeSignatureMigration(
+            packageName = DEPOSITAMO_PACKAGE,
+            installedCertSha256 = DEPOSITAMO_LEGACY_CERT,
+            incomingCertSha256 = DEPOSITAMO_CANONICAL_CERT,
+        )
+    }
+
+    fun isPackageInstalled(context: Context, packageName: String): Boolean =
+        installedInfo(context.packageManager, packageName) != null
+
+    fun requestOfficialUninstall(context: Context, packageName: String) {
+        require(packageName.isNotBlank()) { "Paquete inválido" }
+        val uri = Uri.parse("package:$packageName")
+        val intents = listOf(
+            Intent(Intent.ACTION_UNINSTALL_PACKAGE, uri),
+            Intent(Intent.ACTION_DELETE, uri),
+        )
+        var last: Throwable? = null
+        for (candidate in intents) {
+            try {
+                candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(candidate)
+                return
+            } catch (t: Throwable) {
+                last = t
+            }
+        }
+        throw IllegalStateException("Android no pudo abrir el desinstalador oficial", last)
+    }
+
     fun preflightProblem(context: Context, file: File): String? {
         if (!file.isFile) return "Instalación bloqueada: el APK ya no existe."
         val pm = context.packageManager
@@ -296,19 +345,18 @@ object DownloadInstaller {
         val packageName = archive.packageName
         if (packageName.isBlank()) return "Instalación bloqueada: el APK no declara un paquete válido."
 
-        val flags = signingFlags()
-        val installed = runCatching {
-            @Suppress("DEPRECATION")
-            pm.getPackageInfo(packageName, flags)
-        }.getOrNull() ?: return null
-
+        val installed = installedInfo(pm, packageName) ?: return null
         val archiveSigners = signerDigests(archive)
         val installedSigners = signerDigests(installed)
         if (archiveSigners.isEmpty() || installedSigners.isEmpty()) {
             return "Instalación bloqueada: no pudimos comprobar la firma del APK."
         }
         if (archiveSigners != installedSigners) {
-            return "Actualización bloqueada: la firma no coincide con la app instalada. Esta instalación necesita una migración única."
+            return if (knownOneTimeSignatureMigration(context, file) != null) {
+                "Migración única requerida: esta instalación pertenece a la build legacy de DepositAMO que fue firmada accidentalmente con una clave temporal."
+            } else {
+                "Actualización bloqueada: la firma no coincide con la app instalada. StoreAMO no reemplaza firmas desconocidas."
+            }
         }
 
         val incomingCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archive.longVersionCode else {
@@ -324,6 +372,14 @@ object DownloadInstaller {
             return "Esta misma versión ya está instalada."
         }
         return null
+    }
+
+    private fun installedInfo(pm: PackageManager, packageName: String): PackageInfo? {
+        val flags = signingFlags()
+        return runCatching {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(packageName, flags)
+        }.getOrNull()
     }
 
     private fun archiveInfo(pm: PackageManager, file: File): PackageInfo? {
