@@ -1,0 +1,29 @@
+name: prepare-04370
+
+on:
+  push:
+    branches:
+      - fix/uninstall-app-info-v04370
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/uninstall-app-info-v04370
+          fetch-depth: 0
+      - name: Apply one-shot 0.4.3.70 patch
+        run: python scripts/patch_04370_once.py
+      - name: Commit prepared release
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "StoreAMO 0.4.3.70 · desinstalar + info de aplicación"
+          git push origin HEAD:fix/uninstall-app-info-v04370
