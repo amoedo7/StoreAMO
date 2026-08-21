@@ -11,7 +11,7 @@ required_installer = [
     "downloadFailureReason",
     "directDownload",
     "HttpURLConnection",
-    'User-Agent", "StoreAMO/0.4.3.69"',
+    'setRequestProperty("User-Agent", "StoreAMO/${com.desarrollamo.storeamo.BuildConfig.VERSION_NAME}")',
     "FileProvider.getUriForFile",
     "Intent.ACTION_INSTALL_PACKAGE",
     "Intent.ACTION_VIEW",
