@@ -8,6 +8,8 @@ bootstrap = (root / 'app/src/main/java/com/desarrollamo/storeamo/BootstrapActivi
 news = (root / 'app/src/main/java/com/desarrollamo/storeamo/GoodNewsActivity.kt').read_text(encoding='utf-8')
 repo = (root / 'app/src/main/java/com/desarrollamo/storeamo/data/NewsRepository.kt').read_text(encoding='utf-8')
 props = (root / 'gradle.properties').read_text(encoding='utf-8')
+uninstall_flow_path = root / 'app/src/main/java/com/desarrollamo/storeamo/UninstallFlowActivity.kt'
+uninstall_flow = uninstall_flow_path.read_text(encoding='utf-8') if uninstall_flow_path.exists() else ''
 
 patch = int(next(line.split('=', 1)[1] for line in props.splitlines() if line.startswith('storeamo.versionPatch=')))
 assert patch >= 65
@@ -17,7 +19,9 @@ assert 'candidate_downloads_migration_v1' in bootstrap
 assert '.putBoolean("verified_only", false)' in bootstrap
 assert 'MainActivityV3::class.java' in bootstrap
 assert 'Buenas Nuevas' in main
-assert 'Intent.ACTION_DELETE' in main
+# 0.4.3.65 introduced uninstall; from 0.4.3.70 the Android-owned flow lives
+# in UninstallFlowActivity so it can return to App Info when an OEM fails/cancels.
+assert 'Intent.ACTION_DELETE' in main or 'Intent.ACTION_DELETE' in uninstall_flow
 assert 'Desinstalar' in main
 assert 'storeamo.news.v1' in repo
 assert 'Buenas Nuevas' in news
