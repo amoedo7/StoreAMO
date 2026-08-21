@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "71"
+          test "$PATCH" = "72"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -77,5 +77,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION}: añade migración única guiada para la build legacy de DepositAMO con firma efímera. Tras esa única migración, StoreAMO exige continuidad de firma y las siguientes versiones se actualizan in-place. Conserva el flujo robusto de instalación y desinstalación." \
+            --notes "StoreAMO ${VERSION}: renueva el inicio con identidad visual propia, integra el logo real dentro de la app, sustituye acentos violetas superiores por el ámbar solar de DesarrollAMO y añade una historia para el símbolo de StoreAMO. Buenas Nuevas incorpora filtros funcionales por tiempo, app y tipo/estado de noticia. Conserva el flujo robusto de instalación, actualización y verificación SHA-256." \
             --prerelease
