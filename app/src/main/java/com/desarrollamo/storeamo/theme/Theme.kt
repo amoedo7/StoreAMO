@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -18,6 +21,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+private val StoreAmoShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(34.dp),
+)
+
+private val StoreAmoTypography = Typography(
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 17.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+    labelMedium = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 27.sp, fontWeight = FontWeight.Black),
+)
 
 @Composable
 fun StoreAmoTheme(content: @Composable () -> Unit) {
@@ -40,11 +64,13 @@ fun StoreAmoTheme(content: @Composable () -> Unit) {
         if (AmoPaletteState.current != palette) AmoPaletteState.current = palette
     }
 
+    // Amber is the global focus color in 0.4.3.73. Violet stays inside the
+    // StoreAMO identity instead of becoming a competing interaction color.
     val scheme = if (palette.isDark) {
         darkColorScheme(
             primary = palette.cyan,
             secondary = palette.pink,
-            tertiary = palette.violet,
+            tertiary = palette.amber,
             background = palette.background,
             surface = palette.surface,
             surfaceVariant = palette.surface2,
@@ -60,21 +86,25 @@ fun StoreAmoTheme(content: @Composable () -> Unit) {
         lightColorScheme(
             primary = palette.cyan,
             secondary = palette.pink,
-            tertiary = palette.violet,
+            tertiary = palette.amber,
             background = palette.background,
             surface = palette.surface,
             surfaceVariant = palette.surface2,
             outline = palette.line,
             onPrimary = ColorContrast.onAccent(palette.cyan),
             onSecondary = ColorContrast.onAccent(palette.pink),
-            onTertiary = ColorContrast.onAccent(palette.violet),
+            onTertiary = ColorContrast.onAccent(palette.amber),
             onBackground = palette.text,
             onSurface = palette.text,
             onSurfaceVariant = palette.muted,
         )
     }
 
-    MaterialTheme(colorScheme = scheme) {
+    MaterialTheme(
+        colorScheme = scheme,
+        typography = StoreAmoTypography,
+        shapes = StoreAmoShapes,
+    ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = palette.background,
