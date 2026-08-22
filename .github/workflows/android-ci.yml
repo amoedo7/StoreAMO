@@ -32,6 +32,7 @@ jobs:
           python scripts/validate_uninstall_04370.py
           python scripts/validate_signature_migration.py
           python scripts/validate_04373_design.py
+          python scripts/validate_04374_version.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -42,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "73"
+          test "$PATCH" = "74"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -78,5 +79,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Solar Calm: el equipo de diseño baja ruido y sube jerarquía con una paleta más profunda, ámbar solar como foco global, violeta relegado a identidad secundaria, tipografía y radios coherentes, barras Android integradas y un icono StoreAMO refinado con halo solar. No cambia el flujo robusto de instalación, actualización, firma ni verificación SHA-256." \
+            --notes "StoreAMO ${VERSION} · Solar Calm: misma renovación visual preparada por el equipo de diseño, publicada con el número correcto 0.4.3.74. Paleta más profunda, ámbar solar como foco global, violeta secundario, tipografía/radios coherentes, barras Android integradas e icono StoreAMO refinado con halo solar. No cambia el flujo de instalación, actualización, firma ni verificación SHA-256." \
             --prerelease
