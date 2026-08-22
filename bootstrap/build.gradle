@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingStoreFile = System.getenv('STOREAMO_KEYSTORE_PATH')
+def signingStorePassword = System.getenv('STOREAMO_STORE_PASSWORD')
+def signingKeyAlias = System.getenv('STOREAMO_KEY_ALIAS')
+def signingKeyPassword = System.getenv('STOREAMO_KEY_PASSWORD')
+def releaseSigningRequired = (System.getenv('CI_RELEASE_SIGNING_REQUIRED') ?: 'false').toBoolean()
+def hasReleaseSigning = [signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword]
+        .every { it != null && !it.trim().isEmpty() }
+
+android {
+    namespace 'com.desarrollamo.storeamo.bootstrap'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.desarrollamo.storeamo'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.0.1'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create('secureRelease') {
+                storeFile file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.bootstrap.test'
+            versionNameSuffix '-test'
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.secureRelease
+            } else if (releaseSigningRequired) {
+                throw new GradleException('StoreAMO bootstrap requires the stable signing secrets; never commit a private key')
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
