@@ -32,6 +32,7 @@ jobs:
           python scripts/validate_uninstall_04370.py
           python scripts/validate_signature_migration.py
           python scripts/validate_04373_design.py
+          python scripts/validate_04374_version.py
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
