@@ -17,7 +17,9 @@ assert 'GoodNewsActivity' in manifest
 assert 'BootstrapActivity' in manifest
 assert 'candidate_downloads_migration_v1' in bootstrap
 assert '.putBoolean("verified_only", false)' in bootstrap
-assert 'MainActivityV3::class.java' in bootstrap
+# V3 introduced this regression suite; 0.4.3.75 routes the launcher to V4
+# while V3 remains in the tree for compatibility/reference.
+assert 'MainActivityV3::class.java' in bootstrap or 'MainActivityV4::class.java' in bootstrap
 assert 'Buenas Nuevas' in main
 # 0.4.3.65 introduced uninstall; from 0.4.3.70 the Android-owned flow lives
 # in UninstallFlowActivity so it can return to App Info when an OEM fails/cancels.
