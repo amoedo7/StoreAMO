@@ -6,16 +6,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 
 /**
- * One-time compatibility launcher for the 0.4.3.x line.
+ * Compatibility launcher for the 0.4.3.x line.
  *
- * Older StoreAMO installs defaulted `verified_only` to true, which leaves every
- * candidate visible but disables its install button. DesarrollAMO currently
- * publishes new apps as candidates first, so an upgraded install could look as
- * if downloads were broken even when the public artifact was valid.
- *
- * This migration runs once per installation, opts the existing user into
- * candidate downloads, and then hands control to the normal StoreAMO UI. The
- * setting remains user-controllable afterwards from Ajustes.
+ * Keeps candidate downloads available for existing installs and routes the
+ * launcher to the community-aware StoreAMO UI introduced in 0.4.3.75.
  */
 class BootstrapActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +23,7 @@ class BootstrapActivity : ComponentActivity() {
                 .apply()
         }
 
-        startActivity(Intent(this, MainActivityV3::class.java).apply {
+        startActivity(Intent(this, MainActivityV4::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         })
         finish()
