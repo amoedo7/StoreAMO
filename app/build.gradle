@@ -3,7 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '74').toInteger()
+def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '75').toInteger()
 def devVersionCode = 430000 + releasePatch
 def devVersionName = "0.4.3.${releasePatch}"
 def debugKeystorePath = System.getenv('STOREAMO_DEBUG_KEYSTORE') ?: "${System.properties['user.home']}/.android/debug.keystore"

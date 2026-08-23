@@ -66,6 +66,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".MainActivityV4"
+            android:exported="false" />
+
+        <activity
             android:name=".BootstrapActivity"
             android:exported="true">
             <intent-filter>

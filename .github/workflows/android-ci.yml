@@ -32,7 +32,34 @@ jobs:
           python scripts/validate_uninstall_04370.py
           python scripts/validate_signature_migration.py
           python scripts/validate_04373_design.py
-          python scripts/validate_04374_version.py
+          python scripts/validate_04375_community.py
+      - name: Validate live feedback backend contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, urllib.request
+          base='https://ydmnavyadpztydontaqh.supabase.co/rest/v1/rpc/'
+          key='sb_publishable_vWWs5BbvZvAOB6AgoWsSuQ_z8OnjDPZ'
+          def rpc(name, payload):
+              req=urllib.request.Request(base+name, data=json.dumps(payload).encode(), method='POST', headers={
+                  'apikey': key,
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'User-Agent': 'StoreAMO-CI/0.4.3.75',
+              })
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  return json.load(r)
+          summary=rpc('storeamo_feedback_summary', {'p_app_id':'climaamo'})
+          assert isinstance(summary, list) and summary
+          row=summary[0]
+          assert 'avg_rating' in row and 'rating_count' in row and 'feedback_count' in row
+          overview=rpc('storeamo_ratings_overview', {})
+          assert isinstance(overview, list)
+          comments=rpc('storeamo_public_comments', {'p_app_id':'climaamo','p_limit':3})
+          assert isinstance(comments, list)
+          print('STOREAMO_FEEDBACK_BACKEND_OK')
+          PY
       - name: Build StoreAMO APK
         env:
           STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
@@ -43,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "74"
+          test "$PATCH" = "75"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -79,5 +106,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Solar Calm: misma renovación visual preparada por el equipo de diseño, publicada con el número correcto 0.4.3.74. Paleta más profunda, ámbar solar como foco global, violeta secundario, tipografía/radios coherentes, barras Android integradas e icono StoreAMO refinado con halo solar. No cambia el flujo de instalación, actualización, firma ni verificación SHA-256." \
+            --notes "StoreAMO ${VERSION} · Comunidad: valoraciones reales de 1 a 5 estrellas, ranking Mejor valoradas y feedback por Idea / Mejora / Algo no funciona. Los comentarios no forman un muro: se reciben sin cuenta, se moderan antes de mostrarse y no usan perfiles públicos. Incluye migración guiada para ClimaAMO 0.2.0 → línea de firma nueva, evitando el bucle PREFLIGHT_BLOCKED. Backend de feedback en Supabase mediante RPCs acotados y clave publishable; sin service-role embebido." \
             --prerelease
