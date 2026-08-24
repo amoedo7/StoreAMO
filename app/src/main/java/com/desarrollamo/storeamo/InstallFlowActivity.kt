@@ -22,9 +22,10 @@ import java.io.File
 /**
  * Flujo visible y tolerante a fallos de instalación de StoreAMO.
  *
- * Los errores permanecen visibles hasta una acción del usuario. El único cambio
- * de firma que StoreAMO puede migrar es el legacy conocido de DepositAMO 0.1.0;
- * cualquier otra discrepancia continúa bloqueada por seguridad.
+ * Los errores permanecen visibles hasta una acción del usuario. Si el APK ya
+ * fue verificado por StoreAMO pero Android detecta una firma distinta en una
+ * versión anterior del mismo paquete, StoreAMO ofrece una migración guiada:
+ * abre el desinstalador oficial y continúa automáticamente al volver.
  */
 class InstallFlowActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -166,13 +167,13 @@ class InstallFlowActivity : Activity() {
             awaitingSignatureMigration = false
             if (packageName != null && !DownloadInstaller.isPackageInstalled(this, packageName)) {
                 persistentErrorVisible = false
-                status.text = "Migración completada"
-                detail.text = "La firma legacy ya no está instalada · continuando con $appName $targetVersion."
+                status.text = "Versión anterior eliminada"
+                detail.text = "Continuando automáticamente con $appName $targetVersion."
                 progress.visibility = View.VISIBLE
                 progress.isIndeterminate = true
                 startInstall()
             } else {
-                showKnownSignatureMigration(cancelled = true)
+                showSignatureMigration(cancelled = true)
             }
             return
         }
@@ -327,13 +328,17 @@ class InstallFlowActivity : Activity() {
 
         val migration = DownloadInstaller.knownOneTimeSignatureMigration(this, apkFile)
         if (migration != null) {
-            showKnownSignatureMigration(cancelled = false)
+            showSignatureMigration(cancelled = false)
             return
         }
 
         val preflight = DownloadInstaller.preflightProblem(this, apkFile)
         if (preflight != null) {
-            showStaticInstallError("$preflight\n\n${diagnosticContext("PREFLIGHT_BLOCKED")}")
+            if (preflight.startsWith("Actualización bloqueada: la firma no coincide")) {
+                showSignatureMigration(cancelled = false)
+            } else {
+                showStaticInstallError("$preflight\n\n${diagnosticContext("PREFLIGHT_BLOCKED")}")
+            }
             return
         }
 
@@ -391,7 +396,7 @@ class InstallFlowActivity : Activity() {
         handler.postDelayed({ if (!isFinishing) finish() }, 900)
     }
 
-    private fun showKnownSignatureMigration(cancelled: Boolean) {
+    private fun showSignatureMigration(cancelled: Boolean) {
         polling = false
         fallbackDownloading = false
         verifying = false
@@ -403,19 +408,20 @@ class InstallFlowActivity : Activity() {
 
         progress.isIndeterminate = false
         progress.visibility = View.GONE
-        status.text = if (cancelled) "MIGRACIÓN PENDIENTE" else "MIGRACIÓN ÚNICA DE FIRMA"
+        status.text = if (cancelled) "ELIMINACIÓN PENDIENTE" else "VERSIÓN ANTERIOR INCOMPATIBLE"
         detail.text = buildString {
-            if (cancelled) append("La desinstalación anterior no se completó.\n\n")
-            append("Detectamos exactamente la build legacy de DepositAMO 0.1.0 que fue publicada con una clave temporal. ")
-            append("Esa clave privada no existe, por lo que Android no permite convertirla en una actualización firmada con la identidad canónica.\n\n")
-            append("Este paso ocurre UNA SOLA VEZ: Android eliminará la build legacy y StoreAMO instalará automáticamente la línea canónica. ")
-            append("Después, las versiones siguientes se actualizan normalmente sin desinstalar.\n\n")
-            append("Importante: Android puede borrar los datos privados de la build legacy al desinstalarla.\n\n")
-            append(diagnosticContext("KNOWN_LEGACY_SIGNER_MIGRATION"))
+            if (cancelled) append("La eliminación de la versión anterior no se completó.\n\n")
+            append("StoreAMO verificó el APK nuevo, pero Android detectó que la versión instalada de $appName usa una firma distinta. ")
+            append("Android no permite actualizar una app cuando cambia su firma.\n\n")
+            append("Podés resolverlo sin salir a buscar la app en Ajustes: StoreAMO abrirá el desinstalador oficial de Android. ")
+            append("Cuando confirmes la eliminación y vuelvas, StoreAMO continuará automáticamente con $appName $targetVersion.\n\n")
+            append("Este paso sólo hace falta al cambiar de una línea de firma antigua a la actual. Después, las versiones siguientes se actualizan normalmente sin desinstalar.\n\n")
+            append("Importante: Android puede borrar los datos privados de la versión anterior al desinstalarla.\n\n")
+            append(diagnosticContext("SIGNATURE_MIGRATION_REQUIRED"))
         }
 
         retry.visibility = View.VISIBLE
-        retry.text = "MIGRAR UNA VEZ Y ACTUALIZAR"
+        retry.text = "ELIMINAR VERSIÓN ANTERIOR Y CONTINUAR"
         retry.setOnClickListener {
             val packageName = applicationId
             if (packageName.isNullOrBlank()) {
@@ -431,8 +437,8 @@ class InstallFlowActivity : Activity() {
             close.visibility = View.GONE
             progress.visibility = View.VISIBLE
             progress.isIndeterminate = true
-            status.text = "Migrando firma legacy"
-            detail.text = "Android va a pedir confirmar la eliminación de la build antigua. Al volver, StoreAMO continuará solo con la instalación nueva."
+            status.text = "Esperando confirmación de Android"
+            detail.text = "Android va a pedir confirmar la eliminación de la versión anterior. Al volver, StoreAMO continuará solo con la instalación nueva."
             runCatching { DownloadInstaller.requestOfficialUninstall(this, packageName) }
                 .onFailure { error ->
                     awaitingSignatureMigration = false
