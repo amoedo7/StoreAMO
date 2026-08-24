@@ -11,9 +11,10 @@ main = (root / "app/src/main/java/com/desarrollamo/storeamo/MainActivityV4.kt").
 panel = (root / "app/src/main/java/com/desarrollamo/storeamo/FeedbackPanelV3.kt").read_text(encoding="utf-8")
 repo = (root / "app/src/main/java/com/desarrollamo/storeamo/data/FeedbackRepository.kt").read_text(encoding="utf-8")
 
-assert "storeamo.versionPatch=75" in props
-assert "?: '75'" in build
-assert 'test "$PATCH" = "75"' in ci
+patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
+assert patch >= 75
+assert f"?: '{patch}'" in build
+assert f'test "$PATCH" = "{patch}"' in ci
 assert "MainActivityV4::class.java" in bootstrap
 assert 'android:name=".MainActivityV4"' in manifest
 
@@ -36,4 +37,4 @@ assert "FeedbackPanelV3" in main
 assert "Migrar una vez y actualizar" in main
 assert 'CLIMA_LEGACY_VERSION = "0.2.0"' in main
 assert 'CLIMA_PACKAGE = "com.desarrollamo.climaamo"' in main
-print("STOREAMO_04375_COMMUNITY_OK")
+print(f"STOREAMO_04375_PLUS_COMMUNITY_OK patch={patch}")
