@@ -1,0 +1,31 @@
+name: update-safety-ci
+
+on:
+  push:
+    paths:
+      - 'app/src/main/**'
+      - 'docs/UPDATES_SCRIPTS_AND_DISCOVERY.md'
+      - 'scripts/validate_update_safety.py'
+      - '.github/workflows/update-safety-ci.yml'
+  pull_request:
+    paths:
+      - 'app/src/main/**'
+      - 'docs/UPDATES_SCRIPTS_AND_DISCOVERY.md'
+      - 'scripts/validate_update_safety.py'
+      - '.github/workflows/update-safety-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate StoreAMO update safety invariants
+        run: python scripts/validate_update_safety.py
