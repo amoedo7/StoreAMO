@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Regression gate for StoreAMO's verified install/update path."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
