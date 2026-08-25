@@ -49,9 +49,10 @@ def main() -> None:
     require(ui, "val updates = installedApps.filter", "installed-vs-catalog update list")
     require(ui, "DownloadInstaller.start", "verified installer entrypoint")
 
-    # Termux discovery must remain narrow.
+    # Termux discovery must remain narrow. Comments may mention QUERY_ALL_PACKAGES;
+    # only the actual Android permission is forbidden.
     require(manifest, '<package android:name="com.termux" />', "specific Termux visibility")
-    forbid(manifest, "QUERY_ALL_PACKAGES", "broad package visibility")
+    forbid(manifest, "android.permission.QUERY_ALL_PACKAGES", "broad package visibility permission")
 
     # Architecture contract must keep the same security invariants documented.
     require(docs, "Comprueba package/application id y continuidad de firma", "documented signature continuity")
