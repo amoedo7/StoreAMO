@@ -1,0 +1,46 @@
+name: StoreAMO factory ingest canary
+
+on:
+  push:
+    paths:
+      - 'scripts/verify_factory_ingest.py'
+      - 'app/src/main/java/com/desarrollamo/storeamo/MainActivityV4.kt'
+      - 'app/src/main/java/com/desarrollamo/storeamo/data/CatalogRepository.kt'
+      - '.github/workflows/factory-ingest-canary.yml'
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storeamo-factory-ingest-canary
+  cancel-in-progress: true
+
+jobs:
+  live-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify live factory ingest path
+        run: python scripts/verify_factory_ingest.py | tee /tmp/factory-ingest.json
+      - name: Publish evidence summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## StoreAMO factory ingest canary'
+            echo
+            if test -s /tmp/factory-ingest.json; then
+              echo '```json'
+              cat /tmp/factory-ingest.json
+              echo '```'
+            else
+              echo 'Canary did not produce evidence JSON.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
