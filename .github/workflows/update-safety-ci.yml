@@ -4,12 +4,16 @@ on:
   push:
     paths:
       - 'app/src/main/**'
+      - 'app/src/test/**'
+      - 'app/build.gradle'
       - 'docs/UPDATES_SCRIPTS_AND_DISCOVERY.md'
       - 'scripts/validate_update_safety.py'
       - '.github/workflows/update-safety-ci.yml'
   pull_request:
     paths:
       - 'app/src/main/**'
+      - 'app/src/test/**'
+      - 'app/build.gradle'
       - 'docs/UPDATES_SCRIPTS_AND_DISCOVERY.md'
       - 'scripts/validate_update_safety.py'
       - '.github/workflows/update-safety-ci.yml'
@@ -21,11 +25,20 @@ permissions:
 jobs:
   update-safety:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
       - name: Validate StoreAMO update safety invariants
         run: python scripts/validate_update_safety.py
+      - name: Run deterministic update policy tests
+        run: gradle :app:testDebugUnitTest --tests 'com.desarrollamo.storeamo.update.UpdateBatchPolicyTest' --stacktrace
