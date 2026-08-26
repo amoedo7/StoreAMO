@@ -10,12 +10,9 @@ def replace(path: str, old: str, new: str) -> None:
         raise SystemExit(f"missing expected snippet in {path}: {old[:100]!r}")
     p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-# Version bump.
 replace("gradle.properties", "storeamo.versionPatch=76", "storeamo.versionPatch=77")
 replace("app/build.gradle", "project.findProperty('storeamo.versionPatch') ?: '76'", "project.findProperty('storeamo.versionPatch') ?: '77'")
 
-# Make the uninstall request behave as an Activity transition when possible,
-# and always fall back to Android's App info screen rather than a dead end.
 installer_old = '''    fun requestOfficialUninstall(context: Context, packageName: String) {
         require(packageName.isNotBlank()) { "Paquete inválido" }
         val uri = Uri.parse("package:$packageName")
@@ -82,9 +79,6 @@ installer_new = '''    fun requestOfficialUninstall(context: Context, packageNam
 '''
 replace("app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt", installer_old, installer_new)
 
-# Keep migration state across the OEM/system uninstall screen. If Android comes
-# back without removing the package, open App info automatically; only after
-# that fallback returns without uninstalling do we show the pending screen.
 replace(
     "app/src/main/java/com/desarrollamo/storeamo/InstallFlowActivity.kt",
     "    private var awaitingSignatureMigration = false\n    private var installing = false",
@@ -153,18 +147,6 @@ replace(
     "            append(\"Podés resolverlo desde este botón: StoreAMO abrirá el desinstalador oficial de Android. Si el fabricante no completa ese flujo, abrirá directamente Info. de la aplicación, donde Android muestra Desinstalar. \")\n            append(\"Cuando confirmes la eliminación y vuelvas, StoreAMO continuará automáticamente con $appName $targetVersion.\\n\\n\")",
 )
 
-# CI/version text.
-ci = ROOT / ".github/workflows/android-ci.yml"
-text = ci.read_text(encoding="utf-8")
-text = text.replace("StoreAMO-CI/0.4.3.76", "StoreAMO-CI/0.4.3.77")
-text = text.replace('test "$PATCH" = "76"', 'test "$PATCH" = "77"')
-text = text.replace(
-    "StoreAMO ${VERSION} · Corrige el flujo de actualización cuando una app instalada usa una firma anterior distinta. Después de verificar el APK por SHA-256, StoreAMO muestra ELIMINAR VERSIÓN ANTERIOR Y CONTINUAR, abre el desinstalador oficial de Android y al volver continúa automáticamente con la instalación nueva. Mantiene la migración legacy de DepositAMO y el resto de validaciones de seguridad.",
-    "StoreAMO ${VERSION} · Hace robusta la migración por cambio de firma: el botón abre el desinstalador oficial sin forzar una tarea separada; si Android/OEM no elimina la app, StoreAMO abre automáticamente Info. de la aplicación en esa app para dejar el botón Desinstalar a mano. Al volver, continúa con la instalación verificada. Mantiene las validaciones de integridad, identidad, firma y permisos.",
-)
-ci.write_text(text, encoding="utf-8")
-
-# Regression checks for the exact behavior requested.
 validator = ROOT / "scripts/validate_signature_migration.py"
 text = validator.read_text(encoding="utf-8")
 text = text.replace(
