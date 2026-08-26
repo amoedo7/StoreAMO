@@ -32,6 +32,7 @@ class UpdateBatchCoordinatorTest {
         )
 
         assertEquals(listOf("good"), state.execution.items.map { it.appId })
+        assertEquals(2L, state.execution.items.single().targetVersionCode)
         assertEquals("NOT_AN_UPGRADE", state.plan.blocked["same"])
         assertEquals("CHANNEL_BLOCKED", state.plan.blocked["candidate"])
     }
@@ -67,6 +68,28 @@ class UpdateBatchCoordinatorTest {
         val item = state.execution.items.single()
         assertEquals(UpdateBatchItemStatus.FAILED, item.status)
         assertEquals("TARGET_VERSION_NOT_INSTALLED", item.lastError)
+    }
+
+    @Test
+    fun `reconcile uses persisted admitted target even if catalog plan changes`() {
+        var state = UpdateBatchCoordinator.begin(
+            candidates = listOf(candidate("app", installed = 3, target = 7)),
+            preferences = UpdatePolicyPreferences(wifiOnly = false),
+            trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
+            network = NetworkKind.METERED,
+        )
+        state = UpdateBatchCoordinator.markStarted(state, "app")
+
+        // Simulate a newer catalog snapshot arriving while Android owns the install UI.
+        state = state.copy(
+            plan = state.plan.copy(
+                eligible = listOf(candidate("app", installed = 3, target = 99))
+            )
+        )
+        state = UpdateBatchCoordinator.reconcileActive(state, installedVersionCode = 7)
+
+        assertEquals(7L, state.execution.items.single().targetVersionCode)
+        assertEquals(UpdateBatchItemStatus.SUCCEEDED, state.execution.items.single().status)
     }
 
     @Test
