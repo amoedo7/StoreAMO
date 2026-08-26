@@ -30,8 +30,8 @@ class UpdateBatchCoordinatorTest {
             trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
             network = NetworkKind.METERED,
         )
-
         assertEquals(listOf("good"), state.execution.items.map { it.appId })
+        assertEquals(2L, state.execution.items.single().targetVersionCode)
         assertEquals("NOT_AN_UPGRADE", state.plan.blocked["same"])
         assertEquals("CHANNEL_BLOCKED", state.plan.blocked["candidate"])
     }
@@ -44,11 +44,9 @@ class UpdateBatchCoordinatorTest {
             trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
             network = NetworkKind.METERED,
         )
-
         assertEquals(UpdateBatchExecutionAction.Start("one"), UpdateBatchCoordinator.nextAction(state))
         state = UpdateBatchCoordinator.markStarted(state, "one")
         assertEquals(UpdateBatchExecutionAction.Reconcile("one"), UpdateBatchCoordinator.nextAction(state))
-
         state = UpdateBatchCoordinator.recordInstallResult(state, "one", success = true)
         assertEquals(UpdateBatchExecutionAction.Start("two"), UpdateBatchCoordinator.nextAction(state))
     }
@@ -63,10 +61,28 @@ class UpdateBatchCoordinatorTest {
         )
         state = UpdateBatchCoordinator.markStarted(state, "app")
         state = UpdateBatchCoordinator.reconcileActive(state, installedVersionCode = 6)
-
         val item = state.execution.items.single()
         assertEquals(UpdateBatchItemStatus.FAILED, item.status)
         assertEquals("TARGET_VERSION_NOT_INSTALLED", item.lastError)
+    }
+
+    @Test
+    fun `reconcile uses persisted admitted target even if catalog plan changes`() {
+        var state = UpdateBatchCoordinator.begin(
+            candidates = listOf(candidate("app", installed = 3, target = 7)),
+            preferences = UpdatePolicyPreferences(wifiOnly = false),
+            trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
+            network = NetworkKind.METERED,
+        )
+        state = UpdateBatchCoordinator.markStarted(state, "app")
+        state = state.copy(
+            plan = state.plan.copy(
+                eligible = listOf(candidate("app", installed = 3, target = 99))
+            )
+        )
+        state = UpdateBatchCoordinator.reconcileActive(state, installedVersionCode = 7)
+        assertEquals(7L, state.execution.items.single().targetVersionCode)
+        assertEquals(UpdateBatchItemStatus.SUCCEEDED, state.execution.items.single().status)
     }
 
     @Test
@@ -79,7 +95,6 @@ class UpdateBatchCoordinatorTest {
         )
         state = UpdateBatchCoordinator.markStarted(state, "app")
         state = UpdateBatchCoordinator.reconcileActive(state, installedVersionCode = 8)
-
         assertEquals(UpdateBatchItemStatus.SUCCEEDED, state.execution.items.single().status)
         assertTrue(state.execution.isFinished)
     }
@@ -94,7 +109,6 @@ class UpdateBatchCoordinatorTest {
         )
         state = UpdateBatchCoordinator.markStarted(state, "a")
         state = UpdateBatchCoordinator.recordInstallResult(state, "a", success = false, error = "USER_CANCELLED")
-
         assertEquals(UpdateBatchExecutionAction.Start("b"), UpdateBatchCoordinator.nextAction(state))
         val summary = UpdateBatchCoordinator.summary(state)
         assertEquals(1, summary.failed)
@@ -110,7 +124,6 @@ class UpdateBatchCoordinatorTest {
             trigger = UpdateTrigger.AUTO_UPDATE,
             network = NetworkKind.METERED,
         )
-
         assertTrue(state.plan.eligible.isEmpty())
         assertEquals("AUTO_UPDATE_DISABLED", state.plan.blocked["app"])
         assertEquals(UpdateBatchExecutionAction.Complete, UpdateBatchCoordinator.nextAction(state))

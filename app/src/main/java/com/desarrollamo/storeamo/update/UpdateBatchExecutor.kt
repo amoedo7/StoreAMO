@@ -6,6 +6,7 @@ data class UpdateBatchExecutionItem(
     val appId: String,
     val status: UpdateBatchItemStatus = UpdateBatchItemStatus.PENDING,
     val lastError: String? = null,
+    val targetVersionCode: Long = 1L,
 )
 
 data class UpdateBatchExecutionState(
@@ -22,20 +23,14 @@ sealed interface UpdateBatchExecutionAction {
     data object Complete : UpdateBatchExecutionAction
 }
 
-/**
- * Pure sequential executor for update batches.
- *
- * This class owns only ordering/recovery semantics. Android installation stays in
- * DownloadInstaller / PackageInstaller and is invoked by the UI/controller when
- * [nextAction] returns [UpdateBatchExecutionAction.Start].
- */
 object UpdateBatchExecutor {
     fun begin(plan: UpdateBatchPlan): UpdateBatchExecutionState {
         val seen = mutableSetOf<String>()
         val items = plan.eligible.map { candidate ->
             require(candidate.appId.isNotBlank()) { "appId must not be blank" }
+            require(candidate.targetVersionCode > 0L) { "targetVersionCode must be positive: ${candidate.appId}" }
             require(seen.add(candidate.appId)) { "duplicate eligible appId: ${candidate.appId}" }
-            UpdateBatchExecutionItem(appId = candidate.appId)
+            UpdateBatchExecutionItem(appId = candidate.appId, targetVersionCode = candidate.targetVersionCode)
         }
         return UpdateBatchExecutionState(items = items)
     }
@@ -43,7 +38,6 @@ object UpdateBatchExecutor {
     fun nextAction(state: UpdateBatchExecutionState): UpdateBatchExecutionAction {
         val active = state.activeAppId
         if (active != null) return UpdateBatchExecutionAction.Reconcile(active)
-
         val next = state.items.firstOrNull { it.status == UpdateBatchItemStatus.PENDING }
             ?: return UpdateBatchExecutionAction.Complete
         return UpdateBatchExecutionAction.Start(next.appId)
@@ -51,10 +45,8 @@ object UpdateBatchExecutor {
 
     fun markStarted(state: UpdateBatchExecutionState, appId: String): UpdateBatchExecutionState {
         require(state.activeAppId == null) { "another update is already active: ${state.activeAppId}" }
-        val item = state.items.firstOrNull { it.appId == appId }
-            ?: error("unknown appId: $appId")
+        val item = state.items.firstOrNull { it.appId == appId } ?: error("unknown appId: $appId")
         require(item.status == UpdateBatchItemStatus.PENDING) { "app is not pending: $appId" }
-
         return state.copy(
             items = state.items.map {
                 if (it.appId == appId) it.copy(status = UpdateBatchItemStatus.RUNNING, lastError = null) else it
@@ -63,12 +55,7 @@ object UpdateBatchExecutor {
         )
     }
 
-    fun recordResult(
-        state: UpdateBatchExecutionState,
-        appId: String,
-        success: Boolean,
-        error: String? = null,
-    ): UpdateBatchExecutionState {
+    fun recordResult(state: UpdateBatchExecutionState, appId: String, success: Boolean, error: String? = null): UpdateBatchExecutionState {
         require(state.activeAppId == appId) { "result does not match active app: $appId" }
         val terminalStatus = if (success) UpdateBatchItemStatus.SUCCEEDED else UpdateBatchItemStatus.FAILED
         return state.copy(
@@ -79,17 +66,7 @@ object UpdateBatchExecutor {
         )
     }
 
-    /**
-     * Recovery path after process/activity recreation.
-     * Never retries an in-flight installation blindly. The caller must first
-     * reconcile Android's installed state, then report the result explicitly.
-     */
-    fun reconcile(
-        state: UpdateBatchExecutionState,
-        appId: String,
-        targetInstalled: Boolean,
-        error: String? = null,
-    ): UpdateBatchExecutionState {
+    fun reconcile(state: UpdateBatchExecutionState, appId: String, targetInstalled: Boolean, error: String? = null): UpdateBatchExecutionState {
         require(state.activeAppId == appId) { "reconcile does not match active app: $appId" }
         return recordResult(
             state = state,
