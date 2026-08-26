@@ -97,6 +97,24 @@ class UpdateBatchArtifactBridgeTest {
         assertTrue(failed.isFailure)
     }
 
+    @Test
+    fun `non android artifact binding fails closed`() {
+        val valid = binding("alpha", installed = 1, target = 2)
+        val invalid = valid.copy(
+            artifact = valid.artifact.copy(platform = "web"),
+        )
+
+        val failed = runCatching {
+            UpdateBatchArtifactBridge.begin(
+                bindings = listOf(invalid),
+                preferences = UpdatePolicyPreferences(channel = UpdateChannel.STABLE, wifiOnly = false),
+                trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
+                network = NetworkKind.WIFI,
+            )
+        }
+        assertTrue(failed.isFailure)
+    }
+
     private fun binding(id: String, installed: Long, target: Long): UpdateCatalogAdapter.CandidateBinding {
         val artifact = StoreArtifact(
             platform = "android",
