@@ -81,6 +81,22 @@ class UpdateBatchArtifactBridgeTest {
         assertTrue(failed.isFailure)
     }
 
+    @Test
+    fun `duplicate artifact binding fails closed`() {
+        val first = binding("alpha", installed = 1, target = 2)
+        val duplicate = binding("alpha", installed = 1, target = 3)
+
+        val failed = runCatching {
+            UpdateBatchArtifactBridge.begin(
+                bindings = listOf(first, duplicate),
+                preferences = UpdatePolicyPreferences(channel = UpdateChannel.STABLE, wifiOnly = false),
+                trigger = UpdateTrigger.MANUAL_UPDATE_ALL,
+                network = NetworkKind.WIFI,
+            )
+        }
+        assertTrue(failed.isFailure)
+    }
+
     private fun binding(id: String, installed: Long, target: Long): UpdateCatalogAdapter.CandidateBinding {
         val artifact = StoreArtifact(
             platform = "android",
