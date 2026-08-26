@@ -40,5 +40,5 @@ jobs:
           gradle-version: '8.7'
       - name: Validate StoreAMO update safety invariants
         run: python scripts/validate_update_safety.py
-      - name: Run deterministic update policy tests
-        run: gradle :app:testDebugUnitTest --tests 'com.desarrollamo.storeamo.update.UpdateBatchPolicyTest' --stacktrace
+      - name: Run deterministic update policy and preferences tests
+        run: gradle :app:testDebugUnitTest --tests 'com.desarrollamo.storeamo.update.*' --stacktrace
