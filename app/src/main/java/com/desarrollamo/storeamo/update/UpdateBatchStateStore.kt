@@ -9,7 +9,7 @@ import android.content.Context
  * infer success or blindly restart an installation from unreadable persisted data.
  */
 object UpdateBatchStateCodec {
-    private const val VERSION = "1"
+    private const val VERSION = "2"
     private const val KEY_VERSION = "version"
     private const val KEY_COUNT = "item_count"
     private const val KEY_ACTIVE = "active_app_id"
@@ -25,6 +25,7 @@ object UpdateBatchStateCodec {
             raw["item.$index.app_id"] = item.appId
             raw["item.$index.status"] = item.status.name
             raw["item.$index.error"] = item.lastError ?: ""
+            raw["item.$index.target_version_code"] = item.targetVersionCode.toString()
         }
         return raw
     }
@@ -40,7 +41,14 @@ object UpdateBatchStateCodec {
             val statusName = raw["item.$index.status"] ?: error("missing status")
             val status = UpdateBatchItemStatus.valueOf(statusName)
             val error = raw["item.$index.error"]?.takeIf { it.isNotEmpty() }
-            UpdateBatchExecutionItem(appId = appId, status = status, lastError = error)
+            val targetVersionCode = raw["item.$index.target_version_code"]?.toLongOrNull()
+                ?: error("missing target version code")
+            UpdateBatchExecutionItem(
+                appId = appId,
+                status = status,
+                lastError = error,
+                targetVersionCode = targetVersionCode,
+            )
         }
         val active = raw[KEY_ACTIVE]?.takeIf { it.isNotBlank() }
         UpdateBatchExecutionState(items = items, activeAppId = active).also(::validate)
@@ -50,6 +58,7 @@ object UpdateBatchStateCodec {
         require(state.items.size <= MAX_ITEMS) { "too many update items" }
         val ids = state.items.map { item ->
             require(item.appId.isNotBlank()) { "blank app id" }
+            require(item.targetVersionCode > 0L) { "invalid target version code: ${item.appId}" }
             item.appId
         }
         require(ids.distinct().size == ids.size) { "duplicate app id" }
