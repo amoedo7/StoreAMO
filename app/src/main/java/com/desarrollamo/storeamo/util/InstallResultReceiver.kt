@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
+import com.desarrollamo.storeamo.BuildConfig
 import com.desarrollamo.storeamo.InstallFlowActivity
 
 class InstallResultReceiver : BroadcastReceiver() {
@@ -82,7 +83,7 @@ class InstallResultReceiver : BroadcastReceiver() {
             append("\nDetalle Android: ")
             append(androidMessage.ifBlank { "Android no entregó texto adicional." })
             append("\nCódigo StoreAMO: PACKAGE_INSTALLER_FAILURE")
-            append("\nStoreAMO: 0.4.3.69")
+            append("\nStoreAMO: ").append(BuildConfig.VERSION_NAME)
         }
 
         InstallFlowActivity.showPersistentInstallError(

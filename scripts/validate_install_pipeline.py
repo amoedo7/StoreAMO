@@ -34,15 +34,18 @@ required_flow = [
     "preflightProblem",
     "openSystemInstaller",
     "installWithSession",
+    "PackageInstaller del sistema",
+    "Esperando confirmación de Android",
+    "No inferimos fracaso por un onResume",
     "SHA-256 correcto",
     "ERROR DE INSTALACIÓN · CAPTURA ESTA PANTALLA",
     "Este error queda fijo. No desaparece solo.",
     "showPersistentInstallError",
-    "SYSTEM_INSTALLER_RETURNED_WITHOUT_INSTALL",
     "consumePersistedInstallError",
 ]
 missing = [marker for marker in required_flow if marker not in flow]
 assert not missing, f"Missing install-flow markers: {missing}"
+assert "SYSTEM_INSTALLER_RETURNED_WITHOUT_INSTALL" not in flow, "Do not infer installer failure from onResume timing"
 
 required_receiver = [
     "showStaticError",
@@ -60,10 +63,10 @@ assert 'android.intent.action.VIEW' in manifest
 assert manifest.count('application/vnd.android.package-archive') >= 2
 assert 'androidx.core.content.FileProvider' in manifest
 patch = int(next(line.split('=', 1)[1] for line in props.splitlines() if line.startswith('storeamo.versionPatch=')))
-assert patch >= 69, f"Static install diagnostics require patch >= 69, got {patch}"
+assert patch >= 78, f"Authoritative PackageInstaller flow requires patch >= 78, got {patch}"
 
 # Legacy screens may still call install(), but it must route through the robust paths.
 assert "runCatching { openSystemInstaller(context, file) }" in installer
 assert ".getOrElse { installWithSession(context, file) }" in installer
 
-print("STOREAMO_INSTALL_PIPELINE_04369_PLUS_STATIC_ERRORS_OK")
+print("STOREAMO_INSTALL_PIPELINE_04378_PLUS_AUTHORITATIVE_STATUS_OK")

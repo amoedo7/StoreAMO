@@ -33,6 +33,7 @@ jobs:
           python scripts/validate_signature_migration.py
           python scripts/validate_04373_design.py
           python scripts/validate_04375_community.py
+          python scripts/validate_04378_install_session.py
       - name: Validate live feedback backend contract
         shell: bash
         run: |
@@ -46,7 +47,7 @@ jobs:
                   'apikey': key,
                   'Content-Type': 'application/json',
                   'Accept': 'application/json',
-                  'User-Agent': 'StoreAMO-CI/0.4.3.77',
+                  'User-Agent': 'StoreAMO-CI/0.4.3.78',
               })
               with urllib.request.urlopen(req, timeout=20) as r:
                   return json.load(r)
@@ -70,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "77"
+          test "$PATCH" = "78"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -106,5 +107,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Mejora la migración cuando cambia la firma de una app: el botón abre el desinstalador oficial de Android sin forzar una tarea separada; si Android o el fabricante no completa ese flujo, StoreAMO abre automáticamente Info. de la aplicación para dejar el botón Desinstalar a mano. Al volver, continúa con la instalación verificada. Mantiene las validaciones de integridad, identidad, firma y permisos." \
+            --notes "StoreAMO ${VERSION} · Corrige el falso error visto al autoactualizar: PackageInstaller es ahora la ruta primaria y StoreAMO espera el estado oficial de Android en vez de asumir fracaso por un onResume a los 1,5 s. Mantiene el instalador visible como fallback, la migración por cambio de firma y las validaciones de integridad, identidad, firma y permisos." \
             --prerelease

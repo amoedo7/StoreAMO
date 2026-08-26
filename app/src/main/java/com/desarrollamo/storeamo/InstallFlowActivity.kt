@@ -97,7 +97,7 @@ class InstallFlowActivity : Activity() {
                 success()
                 return
             }
-            if (System.currentTimeMillis() - installStartedAt > 75_000L) {
+            if (!usingSessionInstaller && System.currentTimeMillis() - installStartedAt > 75_000L) {
                 installing = false
                 showStaticInstallError(
                     "Android no confirmó la instalación dentro del tiempo esperado.\n\n" +
@@ -211,17 +211,11 @@ class InstallFlowActivity : Activity() {
         } else if (installing && targetInstalled()) {
             installing = false
             success()
-        } else if (installing && !usingSessionInstaller && installStartedAt > 0L) {
-            handler.postDelayed({
-                if (installing && !persistentErrorVisible && !targetInstalled()) {
-                    installing = false
-                    showStaticInstallError(
-                        "Android volvió del instalador sin completar la instalación. " +
-                            "Si el instalador mostró un mensaje fugaz, este diagnóstico queda fijo para poder capturarlo.\n\n" +
-                            diagnosticContext("SYSTEM_INSTALLER_RETURNED_WITHOUT_INSTALL")
-                    )
-                }
-            }, 1_500L)
+        } else if (installing) {
+            // No inferimos fracaso por un onResume: varios instaladores OEM vuelven a
+            // enfocar StoreAMO mientras la confirmación del sistema todavía está viva.
+            status.text = "Esperando a Android"
+            detail.text = "La instalación sigue en manos de Android. Confirmá Actualizar/Instalar cuando aparezca el diálogo."
         }
     }
 
@@ -365,16 +359,18 @@ class InstallFlowActivity : Activity() {
         progress.isIndeterminate = true
         retry.visibility = View.GONE
         close.visibility = View.GONE
-        usingSessionInstaller = false
+        usingSessionInstaller = true
 
         val route = runCatching {
-            DownloadInstaller.openSystemInstaller(this, apkFile)
-        }.recoverCatching { primaryError ->
-            usingSessionInstaller = true
-            status.text = "Usando instalador alternativo"
-            detail.text = "El instalador visible no abrió (${primaryError.message.orEmpty()}). Probando PackageInstaller…"
+            status.text = "Esperando confirmación de Android"
+            detail.text = "APK verificado · preparando una sesión oficial de instalación."
             DownloadInstaller.installWithSession(this, apkFile)
             "PackageInstaller del sistema"
+        }.recoverCatching { sessionError ->
+            usingSessionInstaller = false
+            status.text = "Abriendo instalador compatible"
+            detail.text = "La sesión oficial no pudo iniciarse (${sessionError.message.orEmpty()}). Abriendo el instalador visible de Android…"
+            DownloadInstaller.openSystemInstaller(this, apkFile)
         }
 
         route.onFailure { error ->
