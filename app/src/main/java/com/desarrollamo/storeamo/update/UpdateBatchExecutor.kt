@@ -6,6 +6,7 @@ data class UpdateBatchExecutionItem(
     val appId: String,
     val status: UpdateBatchItemStatus = UpdateBatchItemStatus.PENDING,
     val lastError: String? = null,
+    val targetVersionCode: Long = 1L,
 )
 
 data class UpdateBatchExecutionState(
@@ -34,8 +35,12 @@ object UpdateBatchExecutor {
         val seen = mutableSetOf<String>()
         val items = plan.eligible.map { candidate ->
             require(candidate.appId.isNotBlank()) { "appId must not be blank" }
+            require(candidate.targetVersionCode > 0L) { "targetVersionCode must be positive: ${candidate.appId}" }
             require(seen.add(candidate.appId)) { "duplicate eligible appId: ${candidate.appId}" }
-            UpdateBatchExecutionItem(appId = candidate.appId)
+            UpdateBatchExecutionItem(
+                appId = candidate.appId,
+                targetVersionCode = candidate.targetVersionCode,
+            )
         }
         return UpdateBatchExecutionState(items = items)
     }
