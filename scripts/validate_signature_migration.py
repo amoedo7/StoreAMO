@@ -35,5 +35,6 @@ assert "BuildConfig.VERSION_NAME" in flow
 
 patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
 assert patch >= 76
-assert f'test "$PATCH" = "{patch}"' in ci
+assert 'PATCH="$(sed -n \'s/^storeamo.versionPatch=//p\' gradle.properties)"' in ci
+assert 'test "$PATCH" -ge 79' in ci
 print("STOREAMO_GENERIC_SIGNATURE_MIGRATION_04376_PLUS_OK")
