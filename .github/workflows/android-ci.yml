@@ -34,6 +34,7 @@ jobs:
           python scripts/validate_04373_design.py
           python scripts/validate_04375_community.py
           python scripts/validate_04378_install_session.py
+          python scripts/validate_04379_self_update_recovery.py
       - name: Validate live feedback backend contract
         shell: bash
         run: |
@@ -47,7 +48,7 @@ jobs:
                   'apikey': key,
                   'Content-Type': 'application/json',
                   'Accept': 'application/json',
-                  'User-Agent': 'StoreAMO-CI/0.4.3.78',
+                  'User-Agent': 'StoreAMO-CI/0.4.3.79',
               })
               with urllib.request.urlopen(req, timeout=20) as r:
                   return json.load(r)
@@ -71,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" = "78"
+          test "$PATCH" = "79"
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -107,5 +108,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Corrige el falso error visto al autoactualizar: PackageInstaller es ahora la ruta primaria y StoreAMO espera el estado oficial de Android en vez de asumir fracaso por un onResume a los 1,5 s. Mantiene el instalador visible como fallback, la migración por cambio de firma y las validaciones de integridad, identidad, firma y permisos." \
+            --notes "StoreAMO ${VERSION} · Corrige la autoactualización en dispositivos donde Android/MIUI falla al reemplazar StoreAMO mientras la propia app controla PackageInstaller. Las actualizaciones de StoreAMO se entregan ahora mediante una descarga externa HTTPS y el instalador de Android, mientras las demás apps mantienen el flujo verificado interno. Conserva firma canónica, SHA-256 y regresiones de instalación." \
             --prerelease
