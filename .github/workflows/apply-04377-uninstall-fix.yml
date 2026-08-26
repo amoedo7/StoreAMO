@@ -1,0 +1,34 @@
+name: apply-04377-uninstall-fix
+
+on:
+  push:
+    branches: [fix/uninstall-flow-04377]
+    paths:
+      - 'scripts/apply_04377_uninstall_fix.py'
+      - '.github/workflows/apply-04377-uninstall-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/uninstall-flow-04377
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python scripts/apply_04377_uninstall_fix.py
+      - name: Commit patched source
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: StoreAMO 0.4.3.77 uninstall fallback'
+          git push origin HEAD:fix/uninstall-flow-04377
