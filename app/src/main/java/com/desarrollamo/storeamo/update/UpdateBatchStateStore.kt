@@ -2,14 +2,8 @@ package com.desarrollamo.storeamo.update
 
 import android.content.Context
 
-/**
- * Versioned, pure codec for durable update-batch recovery.
- *
- * Corrupt or internally inconsistent state decodes to null. The caller must never
- * infer success or blindly restart an installation from unreadable persisted data.
- */
 object UpdateBatchStateCodec {
-    private const val VERSION = "1"
+    private const val VERSION = "2"
     private const val KEY_VERSION = "version"
     private const val KEY_COUNT = "item_count"
     private const val KEY_ACTIVE = "active_app_id"
@@ -25,6 +19,7 @@ object UpdateBatchStateCodec {
             raw["item.$index.app_id"] = item.appId
             raw["item.$index.status"] = item.status.name
             raw["item.$index.error"] = item.lastError ?: ""
+            raw["item.$index.target_version_code"] = item.targetVersionCode.toString()
         }
         return raw
     }
@@ -33,42 +28,38 @@ object UpdateBatchStateCodec {
         require(raw[KEY_VERSION] == VERSION) { "unsupported persisted batch version" }
         val count = raw[KEY_COUNT]?.toIntOrNull() ?: error("missing item count")
         require(count in 0..MAX_ITEMS) { "invalid item count" }
-
         val items = (0 until count).map { index ->
-            val appId = raw["item.$index.app_id"]?.takeIf { it.isNotBlank() }
-                ?: error("missing app id")
-            val statusName = raw["item.$index.status"] ?: error("missing status")
-            val status = UpdateBatchItemStatus.valueOf(statusName)
+            val appId = raw["item.$index.app_id"]?.takeIf { it.isNotBlank() } ?: error("missing app id")
+            val status = UpdateBatchItemStatus.valueOf(raw["item.$index.status"] ?: error("missing status"))
             val error = raw["item.$index.error"]?.takeIf { it.isNotEmpty() }
-            UpdateBatchExecutionItem(appId = appId, status = status, lastError = error)
+            val targetVersionCode = raw["item.$index.target_version_code"]?.toLongOrNull()
+                ?: error("missing target version code")
+            UpdateBatchExecutionItem(appId, status, error, targetVersionCode)
         }
         val active = raw[KEY_ACTIVE]?.takeIf { it.isNotBlank() }
-        UpdateBatchExecutionState(items = items, activeAppId = active).also(::validate)
+        UpdateBatchExecutionState(items, active).also(::validate)
     }.getOrNull()
 
     private fun validate(state: UpdateBatchExecutionState) {
         require(state.items.size <= MAX_ITEMS) { "too many update items" }
         val ids = state.items.map { item ->
             require(item.appId.isNotBlank()) { "blank app id" }
+            require(item.targetVersionCode > 0L) { "invalid target version code: ${item.appId}" }
             item.appId
         }
         require(ids.distinct().size == ids.size) { "duplicate app id" }
-
         val running = state.items.filter { it.status == UpdateBatchItemStatus.RUNNING }
         require(running.size <= 1) { "multiple running updates" }
         if (state.activeAppId == null) {
             require(running.isEmpty()) { "running update without active app" }
         } else {
-            require(running.size == 1 && running.single().appId == state.activeAppId) {
-                "active app does not match running item"
-            }
+            require(running.size == 1 && running.single().appId == state.activeAppId) { "active app does not match running item" }
         }
     }
 
     private const val MAX_ITEMS = 500
 }
 
-/** Durable SharedPreferences-backed state for sequential update batches. */
 class UpdateBatchStateStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -78,10 +69,6 @@ class UpdateBatchStateStore(context: Context) {
         return UpdateBatchStateCodec.decode(raw)
     }
 
-    /**
-     * Synchronous commit is intentional: state must reach durable storage before
-     * PackageInstaller can take the process out of the foreground.
-     */
     fun save(state: UpdateBatchExecutionState): Boolean {
         val encoded = UpdateBatchStateCodec.encode(state)
         val editor = prefs.edit().clear()
