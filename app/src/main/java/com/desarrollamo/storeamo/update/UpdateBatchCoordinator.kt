@@ -66,9 +66,9 @@ object UpdateBatchCoordinator {
     /**
      * Process/activity recreation recovery.
      *
-     * Success is inferred only from Android's installed version code meeting the
-     * exact target that was admitted by policy. A merely-installed older package
-     * never counts as a successful update.
+     * The admitted target is persisted inside the execution item before Android
+     * takes control. Recovery therefore never trusts a newer catalog target that
+     * may have appeared while the process was paused or recreated.
      */
     fun reconcileActive(
         state: UpdateBatchCoordinatorState,
@@ -76,9 +76,9 @@ object UpdateBatchCoordinator {
     ): UpdateBatchCoordinatorState {
         val activeAppId = state.execution.activeAppId
             ?: error("there is no active update to reconcile")
-        val candidate = state.plan.eligible.firstOrNull { it.appId == activeAppId }
-            ?: error("active app is missing from eligible plan: $activeAppId")
-        val targetInstalled = installedVersionCode != null && installedVersionCode >= candidate.targetVersionCode
+        val executionItem = state.execution.items.firstOrNull { it.appId == activeAppId }
+            ?: error("active app is missing from execution state: $activeAppId")
+        val targetInstalled = installedVersionCode != null && installedVersionCode >= executionItem.targetVersionCode
         return state.copy(
             execution = UpdateBatchExecutor.reconcile(
                 state = state.execution,
