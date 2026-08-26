@@ -324,17 +324,41 @@ object DownloadInstaller {
             Intent(Intent.ACTION_UNINSTALL_PACKAGE, uri),
             Intent(Intent.ACTION_DELETE, uri),
         )
-        var last: Throwable? = null
         for (candidate in intents) {
             try {
-                candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (context !is Activity) candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(candidate)
                 return
-            } catch (t: Throwable) {
-                last = t
+            } catch (_: Throwable) {
+                // Probamos la siguiente superficie oficial de Android.
             }
         }
-        throw IllegalStateException("Android no pudo abrir el desinstalador oficial", last)
+        openApplicationDetails(context, packageName)
+    }
+
+    fun openApplicationDetails(context: Context, packageName: String) {
+        require(packageName.isNotBlank()) { "Paquete inválido" }
+        val primary = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$packageName"),
+        )
+        val fallback = Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)
+        if (context !is Activity) {
+            primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(primary)
+        } catch (primaryError: Throwable) {
+            try {
+                context.startActivity(fallback)
+            } catch (fallbackError: Throwable) {
+                throw IllegalStateException(
+                    "Android no pudo abrir ni el desinstalador ni la información de la app",
+                    fallbackError,
+                ).also { it.addSuppressed(primaryError) }
+            }
+        }
     }
 
     fun preflightProblem(context: Context, file: File): String? {

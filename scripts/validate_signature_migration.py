@@ -18,11 +18,16 @@ assert canonical in installer
 assert 'DEPOSITAMO_PACKAGE = "com.desarrollamo.depositamo"' in installer
 assert "knownOneTimeSignatureMigration" in installer
 assert "requestOfficialUninstall" in installer
+assert "openApplicationDetails" in installer
+assert "if (context !is Activity) candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)" in installer
 assert "StoreAMO no reemplaza firmas desconocidas" in installer
 assert 'preflight.startsWith("Actualización bloqueada: la firma no coincide")' in flow
 assert "VERSIÓN ANTERIOR INCOMPATIBLE" in flow
 assert "ELIMINAR VERSIÓN ANTERIOR Y CONTINUAR" in flow
 assert "awaitingSignatureMigration" in flow
+assert "signatureMigrationSettingsFallbackOpened" in flow
+assert "Info. de la aplicación" in flow
+assert "DownloadInstaller.openApplicationDetails" in flow
 assert "StoreAMO continuará automáticamente" in flow
 assert "Después, las versiones siguientes se actualizan normalmente sin desinstalar" in flow
 assert "SIGNATURE_MIGRATION_REQUIRED" in flow

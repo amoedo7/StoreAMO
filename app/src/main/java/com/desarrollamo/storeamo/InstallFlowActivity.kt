@@ -50,6 +50,7 @@ class InstallFlowActivity : Activity() {
     private var verifying = false
     private var awaitingPermission = false
     private var awaitingSignatureMigration = false
+    private var signatureMigrationSettingsFallbackOpened = false
     private var installing = false
     private var usingSessionInstaller = false
     private var installStartedAt = 0L
@@ -164,15 +165,31 @@ class InstallFlowActivity : Activity() {
 
         if (awaitingSignatureMigration) {
             val packageName = applicationId
-            awaitingSignatureMigration = false
             if (packageName != null && !DownloadInstaller.isPackageInstalled(this, packageName)) {
+                awaitingSignatureMigration = false
+                signatureMigrationSettingsFallbackOpened = false
                 persistentErrorVisible = false
                 status.text = "Versión anterior eliminada"
                 detail.text = "Continuando automáticamente con $appName $targetVersion."
                 progress.visibility = View.VISIBLE
                 progress.isIndeterminate = true
                 startInstall()
+            } else if (packageName != null && !signatureMigrationSettingsFallbackOpened) {
+                signatureMigrationSettingsFallbackOpened = true
+                persistentErrorVisible = false
+                status.text = "Abrí Desinstalar en Android"
+                detail.text = "El desinstalador directo no completó la eliminación. StoreAMO abre ahora Info. de la aplicación para que tengas el botón Desinstalar delante, sin buscarla en Ajustes. Al volver, continuará automáticamente."
+                progress.visibility = View.VISIBLE
+                progress.isIndeterminate = true
+                runCatching { DownloadInstaller.openApplicationDetails(this, packageName) }
+                    .onFailure {
+                        awaitingSignatureMigration = false
+                        signatureMigrationSettingsFallbackOpened = false
+                        showSignatureMigration(cancelled = true)
+                    }
             } else {
+                awaitingSignatureMigration = false
+                signatureMigrationSettingsFallbackOpened = false
                 showSignatureMigration(cancelled = true)
             }
             return
@@ -413,7 +430,7 @@ class InstallFlowActivity : Activity() {
             if (cancelled) append("La eliminación de la versión anterior no se completó.\n\n")
             append("StoreAMO verificó el APK nuevo, pero Android detectó que la versión instalada de $appName usa una firma distinta. ")
             append("Android no permite actualizar una app cuando cambia su firma.\n\n")
-            append("Podés resolverlo sin salir a buscar la app en Ajustes: StoreAMO abrirá el desinstalador oficial de Android. ")
+            append("Podés resolverlo desde este botón: StoreAMO abrirá el desinstalador oficial de Android. Si el fabricante no completa ese flujo, abrirá directamente Info. de la aplicación, donde Android muestra Desinstalar. ")
             append("Cuando confirmes la eliminación y vuelvas, StoreAMO continuará automáticamente con $appName $targetVersion.\n\n")
             append("Este paso sólo hace falta al cambiar de una línea de firma antigua a la actual. Después, las versiones siguientes se actualizan normalmente sin desinstalar.\n\n")
             append("Importante: Android puede borrar los datos privados de la versión anterior al desinstalarla.\n\n")
@@ -433,6 +450,7 @@ class InstallFlowActivity : Activity() {
             }
             persistentErrorVisible = false
             awaitingSignatureMigration = true
+            signatureMigrationSettingsFallbackOpened = false
             retry.visibility = View.GONE
             close.visibility = View.GONE
             progress.visibility = View.VISIBLE
