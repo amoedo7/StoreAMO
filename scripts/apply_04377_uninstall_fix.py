@@ -177,8 +177,4 @@ text = text.replace(
 )
 validator.write_text(text, encoding="utf-8")
 
-# Remove one-shot patch machinery from the resulting branch commit.
-(ROOT / "scripts/apply_04377_uninstall_fix.py").unlink(missing_ok=True)
-(ROOT / ".github/workflows/apply-04377-uninstall-fix.yml").unlink(missing_ok=True)
-
 print("STOREAMO_04377_PATCH_APPLIED")
