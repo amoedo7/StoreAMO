@@ -13,8 +13,9 @@ repo = (root / "app/src/main/java/com/desarrollamo/storeamo/data/FeedbackReposit
 
 patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
 assert patch >= 75
-assert f"?: '{patch}'" in build
-assert f'test "$PATCH" = "{patch}"' in ci
+assert "def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '79').toInteger()" in build
+assert 'PATCH="$(sed -n \'s/^storeamo.versionPatch=//p\' gradle.properties)"' in ci
+assert 'test "$PATCH" -ge 79' in ci
 assert "MainActivityV4::class.java" in bootstrap
 assert 'android:name=".MainActivityV4"' in manifest
 
