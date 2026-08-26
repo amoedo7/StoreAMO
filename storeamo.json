@@ -24,7 +24,7 @@
         "platform": "android",
         "pattern": "^StoreAMO-.*\\.apk$",
         "format": "apk",
-        "application_id": "com.desarrollamo.storeamo",
+        "application_id": "com.desarrollamo.storeamo.debug",
         "min_os": "Android 8.0"
       }
     ]
