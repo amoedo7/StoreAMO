@@ -73,6 +73,9 @@ import com.desarrollamo.storeamo.theme.AmoText
 import com.desarrollamo.storeamo.theme.AmoViolet
 import com.desarrollamo.storeamo.theme.StoreAmoTheme
 import com.desarrollamo.storeamo.util.DownloadInstaller
+import com.desarrollamo.storeamo.update.UpdateChannel
+import com.desarrollamo.storeamo.update.UpdateCheckFrequency
+import com.desarrollamo.storeamo.update.UpdatePreferencesStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -147,6 +150,7 @@ private fun StoreAmoV4(resumeToken: Int) {
     val context = LocalContext.current
     val settings = remember { context.getSharedPreferences("storeamo_settings", Context.MODE_PRIVATE) }
     val migrationPrefs = remember { context.getSharedPreferences(MIGRATION_PREFS, Context.MODE_PRIVATE) }
+    val updatePreferencesStore = remember { UpdatePreferencesStore(context) }
 
     var apps by remember { mutableStateOf<List<StoreApp>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -161,6 +165,7 @@ private fun StoreAmoV4(resumeToken: Int) {
     var verifiedOnly by remember { mutableStateOf(settings.getBoolean("verified_only", false)) }
     var showDevelopment by remember { mutableStateOf(settings.getBoolean("show_development", true)) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var updatePreferences by remember { mutableStateOf(updatePreferencesStore.load()) }
     val termuxInstalled = remember(resumeToken) { installedVersionV4(context, TERMUX_PACKAGE_V4) != null }
 
     fun refreshAll() {
@@ -321,6 +326,39 @@ private fun StoreAmoV4(resumeToken: Int) {
                             settings.edit().putBoolean("show_development", it).apply()
                         }
                     }
+item { SectionV4("ACTUALIZACIONES", "Preferencias") }
+
+item {
+    ActionV4("Frecuencia de comprobación", "Actual: ${updatePreferences.frequency.displayLabel()}", "Cambiar") {
+        val next = when (updatePreferences.frequency) {
+  UpdateCheckFrequency.MANUAL -> UpdateCheckFrequency.DAILY
+  UpdateCheckFrequency.DAILY -> UpdateCheckFrequency.WEEKLY
+  UpdateCheckFrequency.WEEKLY -> UpdateCheckFrequency.MANUAL
+        }
+        updatePreferences = updatePreferences.copy(frequency = next).also(updatePreferencesStore::save)
+    }
+}
+item {
+    ActionV4("Canal de versiones", "Actual: ${updatePreferences.channel.displayLabel()}", "Cambiar") {
+        val next = if (updatePreferences.channel == UpdateChannel.STABLE) UpdateChannel.BETA else UpdateChannel.STABLE
+        updatePreferences = updatePreferences.copy(channel = next).also(updatePreferencesStore::save)
+    }
+}
+item {
+    ToggleV4("Actualización automática", "Sólo se habilita por decisión explícita. Android conserva sus confirmaciones de seguridad.", updatePreferences.autoUpdateEnabled) {
+        updatePreferences = updatePreferences.copy(autoUpdateEnabled = it).also(updatePreferencesStore::save)
+    }
+}
+item {
+    ToggleV4("Sólo Wi-Fi", "Impide que la política automática use una conexión medida.", updatePreferences.wifiOnly) {
+        updatePreferences = updatePreferences.copy(wifiOnly = it).also(updatePreferencesStore::save)
+    }
+}
+item {
+    ToggleV4("Notificaciones de actualizaciones", "Permite avisos cuando StoreAMO detecta versiones nuevas.", updatePreferences.notificationsEnabled) {
+        updatePreferences = updatePreferences.copy(notificationsEnabled = it).also(updatePreferencesStore::save)
+    }
+}
                     item { ActionV4("Actualizar catálogo y valoraciones", "Trae versiones, ranking comunitario y estado actual.", "Actualizar", ::refreshAll) }
                     item { ActionV4("Apoyar DesarrollAMO", "Apoyo voluntario a desarrolladores independientes.", "Apoyar") { openUrlV4(context, SUPPORT_URL_V4) } }
                     item { SelfUpdateCardV4(selfUpdate, selfLoading) { artifact -> DownloadInstaller.start(context, "StoreAMO", artifact) } }
@@ -545,4 +583,15 @@ private fun ToggleV4(title: String, body: String, checked: Boolean, onChecked: (
 @Composable
 private fun ActionV4(title: String, body: String, action: String, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = AmoSurface) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Black); Text(body, color = AmoMuted, fontSize = 10.sp) }; Button(onClick = onClick) { Text(action, fontSize = 9.sp) } } }
+}
+
+private fun UpdateCheckFrequency.displayLabel(): String = when (this) {
+    UpdateCheckFrequency.MANUAL -> "Manual"
+    UpdateCheckFrequency.DAILY -> "Diaria"
+    UpdateCheckFrequency.WEEKLY -> "Semanal"
+}
+
+private fun UpdateChannel.displayLabel(): String = when (this) {
+    UpdateChannel.STABLE -> "Estable"
+    UpdateChannel.BETA -> "Beta / candidate"
 }

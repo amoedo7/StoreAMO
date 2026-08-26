@@ -59,6 +59,17 @@ def main() -> None:
     require(docs, "Actualizar todo", "documented batch-update UX")
     require(docs, "Nunca descargar un APK arbitrario", "documented untrusted-artifact rule")
 
+    prefs_ui = read("app/src/main/java/com/desarrollamo/storeamo/MainActivityV4.kt")
+    for needle in (
+        "UpdatePreferencesStore(context)",
+        "Frecuencia de comprobación",
+        "Canal de versiones",
+        "Actualización automática",
+        "Sólo Wi-Fi",
+        "Notificaciones de actualizaciones",
+    ):
+        require(prefs_ui, needle, f"update preferences UI: {needle}")
+
     print("STOREAMO_UPDATE_SAFETY_OK")
 
 
