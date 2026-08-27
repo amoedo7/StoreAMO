@@ -1,4 +1,4 @@
-name: bootstrap-0.0.2
+name: bootstrap-0.0.3
 
 on:
   pull_request:
@@ -6,9 +6,12 @@ on:
       - 'app/build.gradle'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/desarrollamo/storeamo/BootstrapActivity.kt'
+      - 'app/src/main/java/com/desarrollamo/storeamo/InstallFlowActivity.kt'
       - 'app/src/main/java/com/desarrollamo/storeamo/data/SelfUpdateRepository.kt'
       - 'app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt'
-      - 'scripts/validate_bootstrap_002.py'
+      - 'scripts/validate_bootstrap_003.py'
+      - 'scripts/validate_one_tap_update.py'
+      - 'scripts/validate_install_pipeline.py'
       - '.github/workflows/bootstrap-001.yml'
   push:
     branches: [main]
@@ -16,9 +19,12 @@ on:
       - 'app/build.gradle'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/desarrollamo/storeamo/BootstrapActivity.kt'
+      - 'app/src/main/java/com/desarrollamo/storeamo/InstallFlowActivity.kt'
       - 'app/src/main/java/com/desarrollamo/storeamo/data/SelfUpdateRepository.kt'
       - 'app/src/main/java/com/desarrollamo/storeamo/util/DownloadInstaller.kt'
-      - 'scripts/validate_bootstrap_002.py'
+      - 'scripts/validate_bootstrap_003.py'
+      - 'scripts/validate_one_tap_update.py'
+      - 'scripts/validate_install_pipeline.py'
       - '.github/workflows/bootstrap-001.yml'
   workflow_dispatch:
 
@@ -51,7 +57,7 @@ jobs:
       - name: Run StoreAMO regressions
         run: |
           set -euo pipefail
-          python scripts/validate_bootstrap_002.py
+          python scripts/validate_bootstrap_003.py
           python scripts/validate_one_tap_update.py
           python scripts/validate_install_pipeline.py
           python scripts/validate_uninstall_04370.py
@@ -66,27 +72,30 @@ jobs:
           cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
           gradle assembleDebug -Pstoreamo.bootstrapSeed=true --stacktrace
 
-      - name: Verify bootstrap identity and artifact
+      - name: Verify bootstrap identity, permissions and artifact
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/bootstrap-badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='2' versionName='0.0.2'" /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='3' versionName='0.0.3'" /tmp/bootstrap-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee /tmp/bootstrap-permissions.txt
+          ! grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/bootstrap-permissions.txt
+          ! grep -q 'android.permission.REQUEST_DELETE_PACKAGES' /tmp/bootstrap-permissions.txt
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/bootstrap-signature.txt
           EXPECTED="$(keytool -exportcert -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sha256sum | awk '{print $1}')"
           ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/bootstrap-signature.txt | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
           test -n "$ACTUAL"
           test "$EXPECTED" = "$ACTUAL"
           mkdir -p dist
-          cp "$APK" dist/StoreAMO-Bootstrap-0.0.2.apk
-          sha256sum dist/StoreAMO-Bootstrap-0.0.2.apk > dist/SHA256SUMS.txt
+          cp "$APK" dist/StoreAMO-Bootstrap-0.0.3.apk
+          sha256sum dist/StoreAMO-Bootstrap-0.0.3.apk > dist/SHA256SUMS.txt
           sha256sum -c dist/SHA256SUMS.txt
-          unzip -tqq dist/StoreAMO-Bootstrap-0.0.2.apk
+          unzip -tqq dist/StoreAMO-Bootstrap-0.0.3.apk
 
       - name: Upload bootstrap artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: StoreAMO-Bootstrap-0.0.2
+          name: StoreAMO-Bootstrap-0.0.3
           path: dist/*
           if-no-files-found: error
           retention-days: 90
@@ -101,25 +110,26 @@ jobs:
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: StoreAMO-Bootstrap-0.0.2
+          name: StoreAMO-Bootstrap-0.0.3
           path: dist
-      - name: Replace old bootstrap and publish 0.0.2
+      - name: Replace unsafe bootstrap and publish 0.0.3
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          APK="dist/StoreAMO-Bootstrap-0.0.2.apk"
+          APK="dist/StoreAMO-Bootstrap-0.0.3.apk"
           test -s "$APK"
           test -s dist/SHA256SUMS.txt
           sha256sum -c dist/SHA256SUMS.txt
 
-          OLD_TAG="bootstrap-v0.0.1"
-          NEW_TAG="bootstrap-v0.0.2"
-          if gh release view "$OLD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete "$OLD_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-            echo "Removed obsolete $OLD_TAG release and tag."
-          fi
+          for OLD_TAG in bootstrap-v0.0.1 bootstrap-v0.0.2; do
+            if gh release view "$OLD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$OLD_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              echo "Removed obsolete $OLD_TAG release and tag."
+            fi
+          done
 
+          NEW_TAG="bootstrap-v0.0.3"
           if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "$NEW_TAG already exists; leaving verified release unchanged."
             exit 0
@@ -129,5 +139,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "StoreAMO Bootstrap 0.0.2" \
-            --notes "Bootstrap permission-first de StoreAMO. Antes de descargar pide a Android la autorización 'Permitir desde esta fuente'; al volver descubre la release estable actual, descarga por HTTPS, verifica SHA-256/firma mediante el pipeline de StoreAMO y continúa la actualización. Declara también la capacidad de solicitar desinstalaciones oficiales; Android conserva la confirmación final cuando el sistema la exige. No pertenece al canal latest estable."
+            --title "StoreAMO Bootstrap 0.0.3" \
+            --notes "Bootstrap Play Protect safe de StoreAMO. No declara REQUEST_INSTALL_PACKAGES ni REQUEST_DELETE_PACKAGES. Descubre la release estable oficial y abre su APK mediante HTTPS en el navegador/descargas de Android, dejando la instalación y su confirmación en manos del sistema. No pertenece al canal latest estable."
