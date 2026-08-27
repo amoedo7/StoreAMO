@@ -1,24 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
-    <!-- StoreAMO evita QUERY_ALL_PACKAGES. Consulta launchers y los handlers
-         del instalador Android necesarios para entregar un APK verificado. -->
+    <!-- StoreAMO no solicita REQUEST_INSTALL_PACKAGES ni REQUEST_DELETE_PACKAGES.
+         Las instalaciones se entregan al navegador/instalador visible del usuario
+         para evitar que Play Protect clasifique StoreAMO como instalador lateral. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
         <intent>
-            <action android:name="android.intent.action.INSTALL_PACKAGE" />
-            <data android:mimeType="application/vnd.android.package-archive" />
-        </intent>
-        <intent>
             <action android:name="android.intent.action.VIEW" />
-            <data android:mimeType="application/vnd.android.package-archive" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
         </intent>
         <package android:name="com.termux" />
         <package android:name="com.desarrollamo.plataformamo.dev" />
