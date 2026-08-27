@@ -33,6 +33,7 @@ jobs:
           python scripts/validate_04373_design.py
           python scripts/validate_04375_community.py
           python scripts/validate_04379_self_update_recovery.py
+          python scripts/validate_production_signing_setup.py
       - name: Validate live feedback backend contract
         shell: bash
         run: |
