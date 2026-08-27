@@ -38,7 +38,6 @@ jobs:
           python scripts/validate_signature_migration.py
           python scripts/validate_04373_design.py
           python scripts/validate_04375_community.py
-          python scripts/validate_04378_install_session.py
           python scripts/validate_04379_self_update_recovery.py
       - name: Validate live feedback backend contract
         shell: bash
@@ -73,20 +72,24 @@ jobs:
         run: |
           cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
           gradle assembleDebug --stacktrace
-      - name: Prepare versioned artifact
+      - name: Prepare versioned Play-Protect-safe artifact
         id: meta
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" -ge 79
+          test "$PATCH" -ge 81
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           APK="app/build/outputs/apk/debug/app-debug.apk"
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/storeamo-badging.txt
           grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee /tmp/storeamo-permissions.txt
+          ! grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/storeamo-permissions.txt
+          ! grep -q 'android.permission.REQUEST_DELETE_PACKAGES' /tmp/storeamo-permissions.txt
           mkdir -p dist
           cp "$APK" "dist/StoreAMO-${VERSION}.apk"
           sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
+          sha256sum -c dist/SHA256SUMS.txt
           unzip -tqq "dist/StoreAMO-${VERSION}.apk"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "PACKAGE=com.desarrollamo.storeamo.debug"
@@ -134,4 +137,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Canal estable de distribución. Mantiene autoactualización por HTTPS, verificación SHA-256, firma canónica, instalación visible de Android y regresiones de instalación."
+            --notes "StoreAMO ${VERSION} · Canal estable Play Protect safe. No solicita permisos para instalar o eliminar paquetes. Verifica catálogo y SHA-256 y entrega la instalación al navegador/descargas visibles de Android."
