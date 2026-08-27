@@ -3,6 +3,7 @@ name: bootstrap-0.0.3
 on:
   pull_request:
     paths:
+      - 'gradle.properties'
       - 'app/build.gradle'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/desarrollamo/storeamo/BootstrapActivity.kt'
@@ -12,10 +13,12 @@ on:
       - 'scripts/validate_bootstrap_003.py'
       - 'scripts/validate_one_tap_update.py'
       - 'scripts/validate_install_pipeline.py'
+      - 'scripts/validate_signature_migration.py'
       - '.github/workflows/bootstrap-001.yml'
   push:
     branches: [main]
     paths:
+      - 'gradle.properties'
       - 'app/build.gradle'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/desarrollamo/storeamo/BootstrapActivity.kt'
@@ -25,6 +28,7 @@ on:
       - 'scripts/validate_bootstrap_003.py'
       - 'scripts/validate_one_tap_update.py'
       - 'scripts/validate_install_pipeline.py'
+      - 'scripts/validate_signature_migration.py'
       - '.github/workflows/bootstrap-001.yml'
   workflow_dispatch:
 
