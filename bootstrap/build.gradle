@@ -1,0 +1,24 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.desarrollamo.storeamo.bootstrap'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.desarrollamo.storeamo.bootstrap'
+        minSdk 26
+        targetSdk 34
+        versionCode 4
+        versionName '0.0.4'
+    }
+
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}

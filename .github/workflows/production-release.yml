@@ -1,0 +1,103 @@
+name: production-release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sign-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      KEYSTORE_B64: ${{ secrets.STOREAMO_RELEASE_KEYSTORE_B64 }}
+      STORE_PASSWORD: ${{ secrets.STOREAMO_RELEASE_STORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.STOREAMO_RELEASE_KEY_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.STOREAMO_RELEASE_KEY_ALIAS }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          gradle-version: '8.7'
+      - name: Require production signing identity
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          test -n "$KEY_ALIAS"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/storeamo-release.jks"
+          chmod 600 "$RUNNER_TEMP/storeamo-release.jks"
+          keytool -list -v -keystore "$RUNNER_TEMP/storeamo-release.jks" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" | tee /tmp/release-key.txt
+          grep -F 'Owner: CN=DesarrollAMO StoreAMO Release' /tmp/release-key.txt
+      - name: Build unsigned release APKs
+        run: |
+          set -euo pipefail
+          gradle :app:assembleRelease :bootstrap:assembleRelease --stacktrace
+      - name: Sign and verify production APKs
+        run: |
+          set -euo pipefail
+          VERSION="0.4.3.82"
+          STORE_IN="app/build/outputs/apk/release/app-release-unsigned.apk"
+          BOOT_IN="bootstrap/build/outputs/apk/release/bootstrap-release-unsigned.apk"
+          test -s "$STORE_IN"
+          test -s "$BOOT_IN"
+          mkdir -p dist/store dist/bootstrap
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/storeamo-release.jks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "dist/store/StoreAMO-${VERSION}.apk" "$STORE_IN"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/storeamo-release.jks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk" "$BOOT_IN"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/store/StoreAMO-${VERSION}.apk" | tee /tmp/store-signature.txt
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk" | tee /tmp/bootstrap-signature.txt
+          STORE_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/store-signature.txt | head -1)"
+          BOOT_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/bootstrap-signature.txt | head -1)"
+          test -n "$STORE_CERT"
+          test "$STORE_CERT" = "$BOOT_CERT"
+      - name: Verify identities, permissions and hashes
+        run: |
+          set -euo pipefail
+          STORE="dist/store/StoreAMO-0.4.3.82.apk"
+          BOOT="dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$STORE" | tee /tmp/store-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430082' versionName='0.4.3.82'" /tmp/store-badging.txt
+          ! grep -q 'application-debuggable' /tmp/store-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$BOOT" | tee /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='4' versionName='0.0.4'" /tmp/bootstrap-badging.txt
+          ! grep -q 'application-debuggable' /tmp/bootstrap-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$BOOT" | tee /tmp/bootstrap-permissions.txt
+          grep -q 'android.permission.INTERNET' /tmp/bootstrap-permissions.txt
+          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS' /tmp/bootstrap-permissions.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/store-permissions.txt
+          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/store-permissions.txt
+          (cd dist/store && sha256sum StoreAMO-0.4.3.82.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          (cd dist/bootstrap && sha256sum StoreAMO-Bootstrap-0.0.4.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+      - name: Publish production StoreAMO first
+        run: |
+          set -euo pipefail
+          test ! "$(gh release view v0.4.3.82 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; echo $?)" = "0" || { echo 'v0.4.3.82 already exists'; exit 1; }
+          gh release create v0.4.3.82 dist/store/StoreAMO-0.4.3.82.apk dist/store/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'StoreAMO 0.4.3.82' \
+            --notes 'Primera StoreAMO de distribución con package de producción y firma privada release. No es una build .debug y no solicita permisos para instalar o eliminar paquetes.'
+      - name: Publish Bootstrap 0.0.4 and retire 0.0.3
+        run: |
+          set -euo pipefail
+          gh release create bootstrap-v0.0.4 dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk dist/bootstrap/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'StoreAMO Bootstrap 0.0.4' \
+            --notes 'Bootstrap mínimo de producción. Paquete propio com.desarrollamo.storeamo.bootstrap, release no-debug, firma privada permanente e INTERNET como único permiso. Sólo descubre la Store estable oficial y abre su descarga HTTPS en Android.'
+          if gh release view bootstrap-v0.0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete bootstrap-v0.0.3 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          fi
