@@ -58,32 +58,41 @@ jobs:
           assert isinstance(comments, list)
           print('STOREAMO_FEEDBACK_BACKEND_OK')
           PY
-      - name: Build unsigned production release
-        run: gradle :app:assembleRelease --stacktrace
-      - name: Verify production identity and permissions
+      - name: Build unsigned production releases
+        run: gradle :app:assembleRelease :bootstrap:assembleRelease --stacktrace
+      - name: Verify production identities and permissions
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
           test "$PATCH" -ge 82
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
-          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/storeamo-badging.txt
+          STORE="app/build/outputs/apk/release/app-release-unsigned.apk"
+          BOOT="bootstrap/build/outputs/apk/release/bootstrap-release-unsigned.apk"
+          test -s "$STORE"
+          test -s "$BOOT"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$STORE" | tee /tmp/storeamo-badging.txt
           grep -q "package: name='com.desarrollamo.storeamo' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
           ! grep -q 'application-debuggable' /tmp/storeamo-badging.txt
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee /tmp/storeamo-permissions.txt
-          ! grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/storeamo-permissions.txt
-          ! grep -q 'android.permission.REQUEST_DELETE_PACKAGES' /tmp/storeamo-permissions.txt
-          ! grep -q 'android.permission.QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
-          mkdir -p dist
-          cp "$APK" "dist/StoreAMO-${VERSION}-unsigned.apk"
-          sha256sum "dist/StoreAMO-${VERSION}-unsigned.apk" > dist/SHA256SUMS-unsigned.txt
-          unzip -tqq "$APK"
-      - name: Upload unsigned release candidate
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/storeamo-permissions.txt
+          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$BOOT" | tee /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='4' versionName='0.0.4'" /tmp/bootstrap-badging.txt
+          ! grep -q 'application-debuggable' /tmp/bootstrap-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$BOOT" | tee /tmp/bootstrap-permissions.txt
+          grep -q 'android.permission.INTERNET' /tmp/bootstrap-permissions.txt
+          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS' /tmp/bootstrap-permissions.txt
+          mkdir -p dist/store dist/bootstrap
+          cp "$STORE" "dist/store/StoreAMO-${VERSION}-unsigned.apk"
+          cp "$BOOT" "dist/bootstrap/StoreAMO-Bootstrap-0.0.4-unsigned.apk"
+          sha256sum "dist/store/StoreAMO-${VERSION}-unsigned.apk" > dist/store/SHA256SUMS-unsigned.txt
+          sha256sum "dist/bootstrap/StoreAMO-Bootstrap-0.0.4-unsigned.apk" > dist/bootstrap/SHA256SUMS-unsigned.txt
+          unzip -tqq "$STORE"
+          unzip -tqq "$BOOT"
+      - name: Upload unsigned release candidates
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: StoreAMO-release-unsigned
+          name: StoreAMO-production-unsigned
           path: dist/*
           if-no-files-found: error
           retention-days: 7
