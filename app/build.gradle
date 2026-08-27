@@ -4,8 +4,9 @@ plugins {
 }
 
 def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '79').toInteger()
-def devVersionCode = 430000 + releasePatch
-def devVersionName = "0.4.3.${releasePatch}"
+def bootstrapSeed = (project.findProperty('storeamo.bootstrapSeed') ?: 'false').toBoolean()
+def devVersionCode = bootstrapSeed ? 1 : 430000 + releasePatch
+def devVersionName = bootstrapSeed ? '0.0.1' : "0.4.3.${releasePatch}"
 def debugKeystorePath = System.getenv('STOREAMO_DEBUG_KEYSTORE') ?: "${System.properties['user.home']}/.android/debug.keystore"
 
 android {
@@ -18,6 +19,7 @@ android {
         targetSdk 34
         versionCode devVersionCode
         versionName devVersionName
+        buildConfigField 'boolean', 'BOOTSTRAP_SEED', bootstrapSeed.toString()
     }
 
     signingConfigs {
