@@ -39,7 +39,9 @@ keytool -genkeypair -v \
   -dname "CN=DesarrollAMO StoreAMO Release, OU=Mobile, O=DesarrollAMO, C=AR"
 chmod 600 "$KS"
 
-B64="$(base64 < "$KS" | tr -d '\n\r')"
+# OpenSSL produces a single-line RFC 4648 Base64 value consistently on
+# Termux and GNU/Linux. Avoid Android/Toybox base64 wrapping/format quirks.
+B64="$(openssl base64 -A -in "$KS")"
 printf '%s' "$B64" | gh secret set STOREAMO_RELEASE_KEYSTORE_B64 --repo "$REPO" --body -
 printf '%s' "$PASS" | gh secret set STOREAMO_RELEASE_STORE_PASSWORD --repo "$REPO" --body -
 printf '%s' "$PASS" | gh secret set STOREAMO_RELEASE_KEY_PASSWORD --repo "$REPO" --body -
