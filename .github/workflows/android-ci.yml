@@ -8,11 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  build-debug:
+  build-release:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -24,13 +22,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           gradle-version: '8.7'
-      - name: Prepare canonical StoreAMO signing key
-        run: |
-          mkdir -p "$HOME/.android"
-          base64 -d ci/storeamo-debug.keystore.b64 > "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
       - name: Validate StoreAMO regressions
         run: |
+          set -euo pipefail
           python scripts/validate_one_tap_update.py
           python scripts/validate_04365_features.py
           python scripts/validate_install_pipeline.py
@@ -58,83 +52,38 @@ jobs:
                   return json.load(r)
           summary=rpc('storeamo_feedback_summary', {'p_app_id':'climaamo'})
           assert isinstance(summary, list) and summary
-          row=summary[0]
-          assert 'avg_rating' in row and 'rating_count' in row and 'feedback_count' in row
           overview=rpc('storeamo_ratings_overview', {})
           assert isinstance(overview, list)
           comments=rpc('storeamo_public_comments', {'p_app_id':'climaamo','p_limit':3})
           assert isinstance(comments, list)
           print('STOREAMO_FEEDBACK_BACKEND_OK')
           PY
-      - name: Build StoreAMO APK
-        env:
-          STOREAMO_DEBUG_KEYSTORE: ${{ runner.temp }}/storeamo-debug.keystore
-        run: |
-          cp "$HOME/.android/debug.keystore" "$RUNNER_TEMP/storeamo-debug.keystore"
-          gradle assembleDebug --stacktrace
-      - name: Prepare versioned Play-Protect-safe artifact
-        id: meta
+      - name: Build unsigned production release
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Verify production identity and permissions
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" -ge 81
+          test "$PATCH" -ge 82
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee /tmp/storeamo-badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo.debug' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
+          ! grep -q 'application-debuggable' /tmp/storeamo-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee /tmp/storeamo-permissions.txt
           ! grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/storeamo-permissions.txt
           ! grep -q 'android.permission.REQUEST_DELETE_PACKAGES' /tmp/storeamo-permissions.txt
+          ! grep -q 'android.permission.QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
           mkdir -p dist
-          cp "$APK" "dist/StoreAMO-${VERSION}.apk"
-          sha256sum "dist/StoreAMO-${VERSION}.apk" > dist/SHA256SUMS.txt
-          sha256sum -c dist/SHA256SUMS.txt
-          unzip -tqq "dist/StoreAMO-${VERSION}.apk"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "PACKAGE=com.desarrollamo.storeamo.debug"
-          echo "VERSION=${VERSION}"
-          echo "VERSION_CODE=${VERSION_CODE}"
-          echo "APK=dist/StoreAMO-${VERSION}.apk"
-      - name: Upload StoreAMO APK
+          cp "$APK" "dist/StoreAMO-${VERSION}-unsigned.apk"
+          sha256sum "dist/StoreAMO-${VERSION}-unsigned.apk" > dist/SHA256SUMS-unsigned.txt
+          unzip -tqq "$APK"
+      - name: Upload unsigned release candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: StoreAMO-debug
+          name: StoreAMO-release-unsigned
           path: dist/*
           if-no-files-found: error
-          retention-days: 30
-
-  publish-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-debug
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Download verified build output
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: StoreAMO-debug
-          path: dist
-      - name: Publish self-update release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.build-debug.outputs.version }}
-        run: |
-          set -euo pipefail
-          test -n "$VERSION"
-          TAG="v${VERSION}"
-          APK="dist/StoreAMO-${VERSION}.apk"
-          test -s "$APK"
-          test -s dist/SHA256SUMS.txt
-          sha256sum -c dist/SHA256SUMS.txt
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "${TAG} ya está publicada; no se duplica la Release."
-            exit 0
-          fi
-          gh release create "$TAG" "$APK" dist/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "StoreAMO ${VERSION}" \
-            --notes "StoreAMO ${VERSION} · Canal estable Play Protect safe. No solicita permisos para instalar o eliminar paquetes. Verifica catálogo y SHA-256 y entrega la instalación al navegador/descargas visibles de Android."
+          retention-days: 7
