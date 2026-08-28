@@ -1,1 +1,1 @@
-Publish StoreAMO 0.4.3.82 and StoreAMO Install 0.0.5 from main. Retry 2 establishes or recovers the permanent production signing identity and persists only an encrypted recovery asset.
+Publish StoreAMO 0.4.3.82 and StoreAMO Install 0.0.5 from main. Retry 3 establishes the first canonical production signing identity and encrypts its recovery bundle to the external StoreAMO recovery certificate.
