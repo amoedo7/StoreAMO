@@ -87,7 +87,7 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/storeamo-permissions.txt
           ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$BOOT" | tee /tmp/bootstrap-badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='5' versionName='0.0.5'" /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.installer' versionCode='6' versionName='0.0.6'" /tmp/bootstrap-badging.txt
           ! grep -q 'application-debuggable' /tmp/bootstrap-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$BOOT" | tee /tmp/bootstrap-permissions.txt
           grep -q 'android.permission.INTERNET' /tmp/bootstrap-permissions.txt
@@ -95,9 +95,9 @@ jobs:
           ! grep -q 'REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS\|SYSTEM_ALERT_WINDOW\|BIND_ACCESSIBILITY_SERVICE' /tmp/bootstrap-permissions.txt
           mkdir -p dist/store dist/bootstrap
           cp "$STORE" "dist/store/StoreAMO-${VERSION}-unsigned.apk"
-          cp "$BOOT" "dist/bootstrap/StoreAMO-Bootstrap-0.0.5-unsigned.apk"
+          cp "$BOOT" "dist/bootstrap/StoreAMO-Bootstrap-0.0.6-unsigned.apk"
           sha256sum "dist/store/StoreAMO-${VERSION}-unsigned.apk" > dist/store/SHA256SUMS-unsigned.txt
-          sha256sum "dist/bootstrap/StoreAMO-Bootstrap-0.0.5-unsigned.apk" > dist/bootstrap/SHA256SUMS-unsigned.txt
+          sha256sum "dist/bootstrap/StoreAMO-Bootstrap-0.0.6-unsigned.apk" > dist/bootstrap/SHA256SUMS-unsigned.txt
           unzip -tqq "$STORE"
           unzip -tqq "$BOOT"
       - name: Upload unsigned release candidates
