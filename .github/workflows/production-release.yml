@@ -2,6 +2,10 @@ name: production-release
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'release/trigger-v0.4.3.82'
 
 permissions:
   contents: write
