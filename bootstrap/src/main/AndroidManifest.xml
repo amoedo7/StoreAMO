@@ -9,7 +9,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="StoreAMO Install"
+        android:label="StoreAMO 0.0.1"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
