@@ -58,9 +58,9 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
             --ks "$RUNNER_TEMP/storeamo-release.jks" --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
-            --out "dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk" "$BOOT_IN"
+            --out "dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk" "$BOOT_IN"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/store/StoreAMO-${VERSION}.apk" | tee /tmp/store-signature.txt
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk" | tee /tmp/bootstrap-signature.txt
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk" | tee /tmp/bootstrap-signature.txt
           STORE_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/store-signature.txt | head -1)"
           BOOT_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/bootstrap-signature.txt | head -1)"
           test -n "$STORE_CERT"
@@ -69,20 +69,21 @@ jobs:
         run: |
           set -euo pipefail
           STORE="dist/store/StoreAMO-0.4.3.82.apk"
-          BOOT="dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk"
+          BOOT="dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk"
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$STORE" | tee /tmp/store-badging.txt
           grep -q "package: name='com.desarrollamo.storeamo' versionCode='430082' versionName='0.4.3.82'" /tmp/store-badging.txt
           ! grep -q 'application-debuggable' /tmp/store-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$BOOT" | tee /tmp/bootstrap-badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='4' versionName='0.0.4'" /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='5' versionName='0.0.5'" /tmp/bootstrap-badging.txt
           ! grep -q 'application-debuggable' /tmp/bootstrap-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$BOOT" | tee /tmp/bootstrap-permissions.txt
           grep -q 'android.permission.INTERNET' /tmp/bootstrap-permissions.txt
-          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS' /tmp/bootstrap-permissions.txt
+          grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/bootstrap-permissions.txt
+          ! grep -q 'REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS\|SYSTEM_ALERT_WINDOW\|BIND_ACCESSIBILITY_SERVICE' /tmp/bootstrap-permissions.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/store-permissions.txt
           ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/store-permissions.txt
           (cd dist/store && sha256sum StoreAMO-0.4.3.82.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
-          (cd dist/bootstrap && sha256sum StoreAMO-Bootstrap-0.0.4.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          (cd dist/bootstrap && sha256sum StoreAMO-Bootstrap-0.0.5.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
       - name: Publish production StoreAMO first
         run: |
           set -euo pipefail
@@ -90,14 +91,16 @@ jobs:
           gh release create v0.4.3.82 dist/store/StoreAMO-0.4.3.82.apk dist/store/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title 'StoreAMO 0.4.3.82' \
-            --notes 'Primera StoreAMO de distribución con package de producción y firma privada release. No es una build .debug y no solicita permisos para instalar o eliminar paquetes.'
-      - name: Publish Bootstrap 0.0.4 and retire 0.0.3
+            --notes 'StoreAMO de producción con package canónico y firma privada release. StoreAMO no solicita permisos de instalación: delega esa frontera en StoreAMO Install.'
+      - name: Publish StoreAMO Install 0.0.5
         run: |
           set -euo pipefail
-          gh release create bootstrap-v0.0.4 dist/bootstrap/StoreAMO-Bootstrap-0.0.4.apk dist/bootstrap/SHA256SUMS.txt \
+          gh release create bootstrap-v0.0.5 dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk dist/bootstrap/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title 'StoreAMO Bootstrap 0.0.4' \
-            --notes 'Bootstrap mínimo de producción. Paquete propio com.desarrollamo.storeamo.bootstrap, release no-debug, firma privada permanente e INTERNET como único permiso. Sólo descubre la Store estable oficial y abre su descarga HTTPS en Android.'
-          if gh release view bootstrap-v0.0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete bootstrap-v0.0.3 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          fi
+            --title 'StoreAMO Install 0.0.5' \
+            --notes 'Instalador mínimo dedicado. Sólo INTERNET + REQUEST_INSTALL_PACKAGES. Pide autorización visible de fuente, acepta únicamente la release estable oficial, verifica SHA-256 y usa PackageInstaller con confirmación de Android. No desactiva ni elude Play Protect.'
+          for OLD in bootstrap-v0.0.3 bootstrap-v0.0.4; do
+            if gh release view "$OLD" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$OLD" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            fi
+          done
