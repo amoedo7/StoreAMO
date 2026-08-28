@@ -15,10 +15,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      KEYSTORE_B64: ${{ secrets.STOREAMO_RELEASE_KEYSTORE_B64 }}
-      STORE_PASSWORD: ${{ secrets.STOREAMO_RELEASE_STORE_PASSWORD }}
-      KEY_PASSWORD: ${{ secrets.STOREAMO_RELEASE_KEY_PASSWORD }}
-      KEY_ALIAS: ${{ secrets.STOREAMO_RELEASE_KEY_ALIAS }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -32,75 +28,61 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Recover or establish permanent production signing identity
+      - name: Require first canonical production release
         run: |
           set -euo pipefail
-          KS="$RUNNER_TEMP/storeamo-release.jks"
-          mkdir -p dist/recovery
-          rm -f "$KS"
-
-          # Prefer the original GitHub secret only if it is actually a valid keystore.
-          ORIGINAL_OK=0
-          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${STORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ]; then
-            if printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS" 2>/dev/null && \
-               [ -s "$KS" ] && \
-               keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
-              ORIGINAL_OK=1
-            fi
-          fi
-
-          MATERIAL="${KEYSTORE_B64:-}|${STORE_PASSWORD:-}|${KEY_PASSWORD:-}|${KEY_ALIAS:-}"
-          if [ "${#KEYSTORE_B64}" -lt 48 ] && [ "${#STORE_PASSWORD}" -lt 24 ] && [ "${#KEY_PASSWORD}" -lt 24 ]; then
-            echo 'Los secrets existentes no contienen suficiente material privado para una recuperación segura.' >&2
+          if gh release view v0.4.3.82 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.4.3.82 already exists; refusing to generate another production identity.' >&2
             exit 1
           fi
-          RECOVERY_PASS="$(printf '%s' "$MATERIAL" | sha256sum | awk '{print $1}')"
-          echo "::add-mask::$RECOVERY_PASS"
+          test -s release/storeamo-recovery-public.pem
+          openssl x509 -in release/storeamo-recovery-public.pem -noout -subject -fingerprint -sha256
 
-          if [ "$ORIGINAL_OK" -eq 1 ]; then
-            ACTIVE_STORE_PASSWORD="$STORE_PASSWORD"
-            ACTIVE_KEY_PASSWORD="$KEY_PASSWORD"
-            ACTIVE_KEY_ALIAS="$KEY_ALIAS"
-            echo 'Reutilizando identidad de producción válida existente.'
-          else
-            rm -f "$KS"
-            RECOVERY_ASSET="$RUNNER_TEMP/StoreAMO-signing-recovery-v1.enc"
-            if gh release download v0.4.3.82 --repo "$GITHUB_REPOSITORY" --pattern 'StoreAMO-signing-recovery-v1.enc' --dir "$RUNNER_TEMP" >/dev/null 2>&1 && [ -s "$RECOVERY_ASSET" ]; then
-              openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
-                -in "$RECOVERY_ASSET" -out "$KS" -pass pass:"$RECOVERY_PASS"
-              echo 'Identidad de producción recuperada desde backup cifrado.'
-            else
-              ACTIVE_KEY_ALIAS='storeamo-release'
-              ACTIVE_STORE_PASSWORD="$RECOVERY_PASS"
-              ACTIVE_KEY_PASSWORD="$RECOVERY_PASS"
-              keytool -genkeypair -v \
-                -keystore "$KS" -storetype PKCS12 \
-                -storepass "$ACTIVE_STORE_PASSWORD" -keypass "$ACTIVE_KEY_PASSWORD" \
-                -alias "$ACTIVE_KEY_ALIAS" \
-                -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10000 \
-                -dname 'CN=DesarrollAMO StoreAMO Release, OU=Mobile, O=DesarrollAMO, C=AR'
-              echo 'Nueva identidad canónica de producción establecida.'
-            fi
-            ACTIVE_KEY_ALIAS='storeamo-release'
-            ACTIVE_STORE_PASSWORD="$RECOVERY_PASS"
-            ACTIVE_KEY_PASSWORD="$RECOVERY_PASS"
-          fi
+      - name: Establish first permanent production signing identity
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/storeamo-release.p12"
+          RECOVERY_TXT="$RUNNER_TEMP/RECOVERY.txt"
+          RECOVERY_TAR="$RUNNER_TEMP/StoreAMO-signing-recovery-v1.tar.gz"
+          PASS="$(openssl rand -hex 32)"
+          ALIAS='storeamo-release'
+          echo "::add-mask::$PASS"
 
-          echo "::add-mask::$ACTIVE_STORE_PASSWORD"
-          echo "::add-mask::$ACTIVE_KEY_PASSWORD"
-          printf 'ACTIVE_STORE_PASSWORD=%s\n' "$ACTIVE_STORE_PASSWORD" >> "$GITHUB_ENV"
-          printf 'ACTIVE_KEY_PASSWORD=%s\n' "$ACTIVE_KEY_PASSWORD" >> "$GITHUB_ENV"
-          printf 'ACTIVE_KEY_ALIAS=%s\n' "$ACTIVE_KEY_ALIAS" >> "$GITHUB_ENV"
-
-          keytool -list -v -keystore "$KS" -storepass "$ACTIVE_STORE_PASSWORD" -alias "$ACTIVE_KEY_ALIAS" | tee /tmp/release-key.txt
-          grep -F 'Owner: CN=DesarrollAMO StoreAMO Release' /tmp/release-key.txt
+          keytool -genkeypair -v \
+            -keystore "$KS" -storetype PKCS12 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -alias "$ALIAS" \
+            -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10000 \
+            -dname 'CN=DesarrollAMO StoreAMO Release, OU=Mobile, O=DesarrollAMO, C=AR'
           chmod 600 "$KS"
 
-          # Persist only an encrypted recovery copy. The decryption material remains in GitHub Secrets.
-          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
-            -in "$KS" -out dist/recovery/StoreAMO-signing-recovery-v1.enc \
-            -pass pass:"$RECOVERY_PASS"
-          test -s dist/recovery/StoreAMO-signing-recovery-v1.enc
+          CERT_SHA="$(keytool -list -v -keystore "$KS" -storepass "$PASS" -alias "$ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)"
+          test -n "$CERT_SHA"
+          cat > "$RECOVERY_TXT" <<EOF
+          STOREAMO PRODUCTION SIGNING RECOVERY v1
+          Alias: $ALIAS
+          Store password: $PASS
+          Key password: $PASS
+          Certificate SHA-256: $CERT_SHA
+          Canonical package: com.desarrollamo.storeamo
+          First release: 0.4.3.82
+          EOF
+          chmod 600 "$RECOVERY_TXT"
+
+          tar -C "$RUNNER_TEMP" -czf "$RECOVERY_TAR" storeamo-release.p12 RECOVERY.txt
+          mkdir -p dist/recovery
+          openssl cms -encrypt -binary -aes256 \
+            -in "$RECOVERY_TAR" -outform DER \
+            -out dist/recovery/StoreAMO-signing-recovery-v1.cms \
+            release/storeamo-recovery-public.pem
+          test -s dist/recovery/StoreAMO-signing-recovery-v1.cms
+          rm -f "$RECOVERY_TXT" "$RECOVERY_TAR"
+
+          printf 'ACTIVE_STORE_PASSWORD=%s\n' "$PASS" >> "$GITHUB_ENV"
+          printf 'ACTIVE_KEY_PASSWORD=%s\n' "$PASS" >> "$GITHUB_ENV"
+          printf 'ACTIVE_KEY_ALIAS=%s\n' "$ALIAS" >> "$GITHUB_ENV"
+          printf 'ACTIVE_CERT_SHA=%s\n' "$CERT_SHA" >> "$GITHUB_ENV"
+          echo "Production certificate SHA-256: $CERT_SHA"
 
       - name: Build unsigned release APKs
         run: |
@@ -110,26 +92,29 @@ jobs:
       - name: Sign and verify production APKs
         run: |
           set -euo pipefail
-          VERSION="0.4.3.82"
           STORE_IN="app/build/outputs/apk/release/app-release-unsigned.apk"
           BOOT_IN="bootstrap/build/outputs/apk/release/bootstrap-release-unsigned.apk"
           test -s "$STORE_IN"
           test -s "$BOOT_IN"
           mkdir -p dist/store dist/bootstrap
+
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
-            --ks "$RUNNER_TEMP/storeamo-release.jks" --ks-key-alias "$ACTIVE_KEY_ALIAS" \
+            --ks "$RUNNER_TEMP/storeamo-release.p12" --ks-key-alias "$ACTIVE_KEY_ALIAS" \
             --ks-pass env:ACTIVE_STORE_PASSWORD --key-pass env:ACTIVE_KEY_PASSWORD \
-            --out "dist/store/StoreAMO-${VERSION}.apk" "$STORE_IN"
+            --out dist/store/StoreAMO-0.4.3.82.apk "$STORE_IN"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
-            --ks "$RUNNER_TEMP/storeamo-release.jks" --ks-key-alias "$ACTIVE_KEY_ALIAS" \
+            --ks "$RUNNER_TEMP/storeamo-release.p12" --ks-key-alias "$ACTIVE_KEY_ALIAS" \
             --ks-pass env:ACTIVE_STORE_PASSWORD --key-pass env:ACTIVE_KEY_PASSWORD \
-            --out "dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk" "$BOOT_IN"
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/store/StoreAMO-${VERSION}.apk" | tee /tmp/store-signature.txt
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk" | tee /tmp/bootstrap-signature.txt
-          STORE_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/store-signature.txt | head -1)"
-          BOOT_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/bootstrap-signature.txt | head -1)"
+            --out dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk "$BOOT_IN"
+
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs dist/store/StoreAMO-0.4.3.82.apk | tee /tmp/store-signature.txt
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk | tee /tmp/bootstrap-signature.txt
+          STORE_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/store-signature.txt | head -1 | tr '[:lower:]' '[:upper:]')"
+          BOOT_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/bootstrap-signature.txt | head -1 | tr '[:lower:]' '[:upper:]')"
+          EXPECTED="$(printf '%s' "$ACTIVE_CERT_SHA" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test -n "$STORE_CERT"
           test "$STORE_CERT" = "$BOOT_CERT"
+          test "$(printf '%s' "$STORE_CERT" | tr -d ':')" = "$EXPECTED"
 
       - name: Verify identities, permissions and hashes
         run: |
@@ -151,24 +136,26 @@ jobs:
           (cd dist/store && sha256sum StoreAMO-0.4.3.82.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
           (cd dist/bootstrap && sha256sum StoreAMO-Bootstrap-0.0.5.apk > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
 
-      - name: Publish production StoreAMO first
+      - name: Publish production StoreAMO
         run: |
           set -euo pipefail
-          test ! "$(gh release view v0.4.3.82 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; echo $?)" = "0" || { echo 'v0.4.3.82 already exists'; exit 1; }
           gh release create v0.4.3.82 \
-            dist/store/StoreAMO-0.4.3.82.apk dist/store/SHA256SUMS.txt \
-            dist/recovery/StoreAMO-signing-recovery-v1.enc \
+            dist/store/StoreAMO-0.4.3.82.apk \
+            dist/store/SHA256SUMS.txt \
+            dist/recovery/StoreAMO-signing-recovery-v1.cms \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title 'StoreAMO 0.4.3.82' \
-            --notes 'Primera StoreAMO con package canónico com.desarrollamo.storeamo y firma permanente de producción. StoreAMO no solicita permisos de instalación: delega esa frontera en StoreAMO Install. El asset de recovery de firma está cifrado y no contiene la clave en texto claro.'
+            --notes "Primera StoreAMO con package canónico com.desarrollamo.storeamo y firma permanente de producción. Certificado SHA-256: ${ACTIVE_CERT_SHA}. StoreAMO no solicita permisos para instalar ni eliminar paquetes. El backup de firma publicado está cifrado para la clave privada de recuperación externa."
 
       - name: Publish StoreAMO Install 0.0.5
         run: |
           set -euo pipefail
-          gh release create bootstrap-v0.0.5 dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk dist/bootstrap/SHA256SUMS.txt \
+          gh release create bootstrap-v0.0.5 \
+            dist/bootstrap/StoreAMO-Bootstrap-0.0.5.apk \
+            dist/bootstrap/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title 'StoreAMO Install 0.0.5' \
-            --notes 'Instalador mínimo dedicado. Sólo INTERNET + REQUEST_INSTALL_PACKAGES. Pide autorización visible de fuente, acepta únicamente la release estable oficial, verifica SHA-256 y usa PackageInstaller con confirmación de Android. No desactiva ni elude Play Protect.'
+            --notes "Instalador dedicado firmado con la identidad de producción ${ACTIVE_CERT_SHA}. Sólo INTERNET + REQUEST_INSTALL_PACKAGES; requiere autorización y confirmación visibles de Android. No desactiva ni elude Play Protect."
           for OLD in bootstrap-v0.0.3 bootstrap-v0.0.4; do
             if gh release view "$OLD" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               gh release delete "$OLD" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
