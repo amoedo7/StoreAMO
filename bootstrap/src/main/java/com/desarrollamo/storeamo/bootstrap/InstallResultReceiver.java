@@ -9,7 +9,7 @@ import android.widget.Toast;
 
 public final class InstallResultReceiver extends BroadcastReceiver {
     static final String ACTION_INSTALL_STATUS = "com.desarrollamo.storeamo.bootstrap.INSTALL_STATUS";
-    private static final String PREFS = "storeamo_install";
+    private static final String PREFS = "storeamo_seed";
     private static final String KEY_LAST_STATUS = "last_status";
 
     @Override
@@ -47,10 +47,10 @@ public final class InstallResultReceiver extends BroadcastReceiver {
         String message;
         switch (status) {
             case PackageInstaller.STATUS_FAILURE_BLOCKED:
-                message = "Android o Play Protect bloqueó la instalación. StoreAMO Install no desactiva ni elude esa protección.";
+                message = "Android o Play Protect bloqueó la instalación. La semilla StoreAMO 0.0.1 no desactiva ni elude esa protección.";
                 break;
             case PackageInstaller.STATUS_FAILURE_CONFLICT:
-                message = "La StoreAMO instalada entra en conflicto con la firma o identidad de la release oficial. Puede requerir retirar una versión antigua antes de instalar la nueva identidad estable.";
+                message = "La StoreAMO instalada entra en conflicto con la firma o identidad de la release oficial.";
                 break;
             case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
                 message = "Esta release de StoreAMO no es compatible con el dispositivo.";
