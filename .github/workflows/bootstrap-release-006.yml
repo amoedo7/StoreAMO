@@ -67,7 +67,6 @@ jobs:
           First release: 0.0.6
           EOF
           chmod 600 "$RECOVERY_TXT"
-          cp "$KS" "$RUNNER_TEMP/storeamo-installer-release.p12"
           tar -C "$RUNNER_TEMP" -czf "$RECOVERY_TAR" storeamo-installer-release.p12 INSTALLER-RECOVERY.txt
           mkdir -p dist/recovery
           openssl cms -encrypt -binary -aes256 \
