@@ -34,6 +34,15 @@ jobs:
           python scripts/validate_04375_community.py
           python scripts/validate_04379_self_update_recovery.py
           python scripts/validate_production_signing_setup.py
+      - name: Validate installer boundary
+        run: |
+          set -euo pipefail
+          grep -q 'REQUEST_INSTALL_PACKAGES' bootstrap/src/main/AndroidManifest.xml
+          grep -q 'PackageInstaller.SessionParams' bootstrap/src/main/java/com/desarrollamo/storeamo/bootstrap/MainActivity.java
+          grep -q 'canRequestPackageInstalls' bootstrap/src/main/java/com/desarrollamo/storeamo/bootstrap/MainActivity.java
+          grep -q 'ACTION_MANAGE_UNKNOWN_APP_SOURCES' bootstrap/src/main/java/com/desarrollamo/storeamo/bootstrap/MainActivity.java
+          grep -q 'SHA-256' bootstrap/src/main/java/com/desarrollamo/storeamo/bootstrap/MainActivity.java
+          grep -q 'STATUS_FAILURE_BLOCKED' bootstrap/src/main/java/com/desarrollamo/storeamo/bootstrap/InstallResultReceiver.java
       - name: Validate live feedback backend contract
         shell: bash
         run: |
@@ -78,16 +87,17 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/storeamo-permissions.txt
           ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$BOOT" | tee /tmp/bootstrap-badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='4' versionName='0.0.4'" /tmp/bootstrap-badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo.bootstrap' versionCode='5' versionName='0.0.5'" /tmp/bootstrap-badging.txt
           ! grep -q 'application-debuggable' /tmp/bootstrap-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$BOOT" | tee /tmp/bootstrap-permissions.txt
           grep -q 'android.permission.INTERNET' /tmp/bootstrap-permissions.txt
-          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS' /tmp/bootstrap-permissions.txt
+          grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/bootstrap-permissions.txt
+          ! grep -q 'REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS\|SYSTEM_ALERT_WINDOW\|BIND_ACCESSIBILITY_SERVICE' /tmp/bootstrap-permissions.txt
           mkdir -p dist/store dist/bootstrap
           cp "$STORE" "dist/store/StoreAMO-${VERSION}-unsigned.apk"
-          cp "$BOOT" "dist/bootstrap/StoreAMO-Bootstrap-0.0.4-unsigned.apk"
+          cp "$BOOT" "dist/bootstrap/StoreAMO-Bootstrap-0.0.5-unsigned.apk"
           sha256sum "dist/store/StoreAMO-${VERSION}-unsigned.apk" > dist/store/SHA256SUMS-unsigned.txt
-          sha256sum "dist/bootstrap/StoreAMO-Bootstrap-0.0.4-unsigned.apk" > dist/bootstrap/SHA256SUMS-unsigned.txt
+          sha256sum "dist/bootstrap/StoreAMO-Bootstrap-0.0.5-unsigned.apk" > dist/bootstrap/SHA256SUMS-unsigned.txt
           unzip -tqq "$STORE"
           unzip -tqq "$BOOT"
       - name: Upload unsigned release candidates
