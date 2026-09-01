@@ -1,2 +1,3 @@
 StoreAMO 0.4.3.83
 In-app verified APK installation; no browser handoff for catalog apps.
+Retry 2: normalized canonical signing keystore decode.
