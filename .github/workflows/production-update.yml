@@ -51,7 +51,27 @@ jobs:
           test -n "$STOREAMO_RELEASE_KEY_PASSWORD"
           test -n "$STOREAMO_RELEASE_KEY_ALIAS"
           KS="$RUNNER_TEMP/storeamo-release.jks"
-          printf '%s' "$STOREAMO_RELEASE_KEYSTORE_B64" | base64 -d > "$KS"
+          python - "$KS" <<'PY'
+          import base64
+          import os
+          import re
+          import sys
+
+          raw = os.environ["STOREAMO_RELEASE_KEYSTORE_B64"].strip()
+          if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+              raw = raw[1:-1]
+          if ";base64," in raw[:160]:
+              raw = raw.split(",", 1)[1]
+          normalized = re.sub(r"\s+", "", raw)
+          try:
+              decoded = base64.b64decode(normalized, validate=True)
+          except Exception as exc:
+              raise SystemExit(f"STOREAMO_SIGNING_SECRET_INVALID_BASE64: {exc}")
+          if not decoded:
+              raise SystemExit("STOREAMO_SIGNING_SECRET_EMPTY_KEYSTORE")
+          open(sys.argv[1], "wb").write(decoded)
+          print("STOREAMO_SIGNING_SECRET_DECODED", len(decoded))
+          PY
           chmod 600 "$KS"
           keytool -list -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" >/dev/null
           CERT="$(keytool -list -v -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
