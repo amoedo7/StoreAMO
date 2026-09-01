@@ -37,6 +37,11 @@ def main() -> int:
     assert "IdeAMO" not in source
     assert source.index("sha256sum") < source.index('"${\'$\'}PY" "${\'$\'}TMP"')
     assert "BLOQUEADO: SHA-256 no coincide" in source
+    assert "fun TermuxScriptInstallCard" in source
+    main_v4 = Path("app/src/main/java/com/desarrollamo/storeamo/MainActivityV4.kt").read_text(encoding="utf-8")
+    assert "if (termuxInstalled)" in main_v4
+    assert "TermuxScriptInstallCard(" in main_v4
+    assert "TERMUX_FDROID_V4" in main_v4 and "TERMUX_PLAY_V4" in main_v4
 
     for name, repo in EXPECTED.items():
         block = entries[name]
@@ -49,7 +54,7 @@ def main() -> int:
         assert match, url
         assert re.fullmatch(r"[0-9a-f]{64}", digest), digest
         if args.remote:
-            request = urllib.request.Request(url, headers={"User-Agent": "StoreAMO-CI/0.4.3.86"})
+            request = urllib.request.Request(url, headers={"User-Agent": "StoreAMO-CI/0.4.3.87"})
             with urllib.request.urlopen(request, timeout=20) as response:
                 body = response.read()
             assert hashlib.sha256(body).hexdigest() == digest, name

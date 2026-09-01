@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'release/trigger-v0.4.3.86'
+      - 'release/trigger-v0.4.3.87'
 
 permissions:
   contents: write
@@ -36,10 +36,10 @@ jobs:
       - name: Validate source and release target
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)" = "86"
+          test "$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)" = "87"
           python scripts/validate_install_pipeline.py
-          if gh release view v0.4.3.86 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'v0.4.3.86 already exists' >&2
+          if gh release view v0.4.3.87 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.4.3.87 already exists' >&2
             exit 1
           fi
 
@@ -75,14 +75,14 @@ jobs:
           test "$CERT" = "$EXPECTED_CERT_SHA256"
           echo "STOREAMO_KEYSTORE=$KS" >> "$GITHUB_ENV"
 
-      - name: Build StoreAMO 0.4.3.86
+      - name: Build StoreAMO 0.4.3.87
         run: gradle :app:assembleRelease --stacktrace
 
       - name: Sign and verify update continuity
         run: |
           set -euo pipefail
           IN="app/build/outputs/apk/release/app-release-unsigned.apk"
-          OUT="StoreAMO-0.4.3.86.apk"
+          OUT="StoreAMO-0.4.3.87.apk"
           test -s "$IN"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
             --ks "$STOREAMO_KEYSTORE" \
@@ -95,14 +95,14 @@ jobs:
           test "$NEW_CERT" = "$EXPECTED_CERT_SHA256"
 
           mkdir -p /tmp/previous
-          gh release download v0.4.3.85 --repo "$GITHUB_REPOSITORY" -p 'StoreAMO-0.4.3.85.apk' -D /tmp/previous
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs /tmp/previous/StoreAMO-0.4.3.85.apk | tee /tmp/old-cert.txt
+          gh release download v0.4.3.86 --repo "$GITHUB_REPOSITORY" -p 'StoreAMO-0.4.3.86.apk' -D /tmp/previous
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs /tmp/previous/StoreAMO-0.4.3.86.apk | tee /tmp/old-cert.txt
           OLD_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/old-cert.txt | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test "$OLD_CERT" = "$EXPECTED_CERT_SHA256"
           test "$OLD_CERT" = "$NEW_CERT"
 
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$OUT" | tee /tmp/badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430086' versionName='0.4.3.86'" /tmp/badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430087' versionName='0.4.3.87'" /tmp/badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$OUT" | tee /tmp/permissions.txt
           grep -q 'android.permission.INTERNET' /tmp/permissions.txt
           grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/permissions.txt
@@ -110,11 +110,11 @@ jobs:
           sha256sum "$OUT" > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
 
-      - name: Publish StoreAMO 0.4.3.86
+      - name: Publish StoreAMO 0.4.3.87
         run: |
           set -euo pipefail
-          gh release create v0.4.3.86 \
-            StoreAMO-0.4.3.86.apk SHA256SUMS.txt \
+          gh release create v0.4.3.87 \
+            StoreAMO-0.4.3.87.apk SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title 'StoreAMO 0.4.3.86' \
-            --notes 'StoreAMO 0.4.3.86 incorpora los seis utilitarios públicos compatibles con Android mediante Termux, todos fijados por commit y verificados por SHA-256 antes de ejecutarse. Conserva la descarga e instalación interna de APKs y exactamente la misma identidad de firma permanente 7BD60FD7… de 0.4.3.85.'
+            --title 'StoreAMO 0.4.3.87' \
+            --notes 'StoreAMO 0.4.3.87 hace visibles los seis utilitarios Android aun cuando Termux no está instalado y ofrece acceso explícito a sus fuentes de instalación. Después de instalarlo, cada herramienta se descarga desde su repositorio público fijado por commit y se verifica con SHA-256. Conserva exactamente la misma identidad de firma permanente 7BD60FD7… de 0.4.3.86.'
