@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,13 +21,12 @@ import com.desarrollamo.storeamo.util.DownloadInstaller
 import java.io.File
 
 /**
- * Safe installation handoff for StoreAMO.
+ * In-app verified installation flow for StoreAMO.
  *
- * StoreAMO verifies the selected artifact, but it deliberately does not request
- * REQUEST_INSTALL_PACKAGES. Once the artifact is verified, Android's browser /
- * download surface receives the official HTTPS URL. The user installs from the
- * system-visible download UI, avoiding the Play Protect classification applied
- * to sideloaded apps that can themselves install arbitrary APKs.
+ * StoreAMO downloads the selected APK itself, verifies its SHA-256 against the
+ * catalog and only then hands the local verified file to Android's visible
+ * package installer. StoreAMO never installs silently: Android keeps the final
+ * user confirmation and the per-source install authorization.
  */
 class InstallFlowActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -51,7 +49,10 @@ class InstallFlowActivity : Activity() {
     private var polling = false
     private var fallbackDownloading = false
     private var verifying = false
-    private var browserOpened = false
+    private var artifactVerified = false
+    private var awaitingInstallPermission = false
+    private var permissionScreenOpened = false
+    private var installerOpened = false
     private var persistentErrorVisible = false
 
     private val pollDownload = object : Runnable {
@@ -61,10 +62,10 @@ class InstallFlowActivity : Activity() {
             if (percent != null) {
                 progress.isIndeterminate = false
                 progress.progress = percent
-                detail.text = "Verificando descarga · $percent%"
+                detail.text = "Descargando dentro de StoreAMO · $percent%"
             } else {
                 progress.isIndeterminate = true
-                detail.text = "Android está obteniendo el APK para verificarlo…"
+                detail.text = "StoreAMO está obteniendo el APK…"
             }
 
             when (DownloadInstaller.status(this@InstallFlowActivity, downloadId)) {
@@ -72,7 +73,7 @@ class InstallFlowActivity : Activity() {
                     polling = false
                     progress.isIndeterminate = false
                     progress.progress = 100
-                    detail.text = "Descarga de control completa · verificando SHA-256"
+                    detail.text = "Descarga completa · verificando SHA-256"
                     verifyAndContinue()
                 }
                 DownloadManager.STATUS_FAILED -> {
@@ -131,22 +132,35 @@ class InstallFlowActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!browserOpened || persistentErrorVisible) return
+        if (persistentErrorVisible) return
 
         if (targetInstalled()) {
             success()
             return
         }
 
-        progress.visibility = View.GONE
-        status.text = "Completá la instalación en Android"
-        detail.text = "La descarga oficial se abrió fuera de StoreAMO. Cuando termine, tocá el APK descargado y elegí Instalar. Después podés volver acá."
-        action.apply {
-            text = "Abrir descarga oficial otra vez"
-            visibility = View.VISIBLE
-            setOnClickListener { openVerifiedUrl() }
+        if (awaitingInstallPermission) {
+            if (DownloadInstaller.canInstallPackages(this)) {
+                awaitingInstallPermission = false
+                permissionScreenOpened = false
+                openVerifiedInstaller()
+            } else if (permissionScreenOpened) {
+                showInstallPermissionRequired(autoOpen = false)
+            }
+            return
         }
-        close.visibility = View.VISIBLE
+
+        if (installerOpened) {
+            progress.visibility = View.GONE
+            status.text = "Completá la instalación en Android"
+            detail.text = "El APK ya fue descargado y verificado por StoreAMO. Android requiere tu confirmación final para instalarlo."
+            action.apply {
+                text = "Reintentar instalación"
+                visibility = View.VISIBLE
+                setOnClickListener { openVerifiedInstaller() }
+            }
+            close.visibility = View.VISIBLE
+        }
     }
 
     override fun onDestroy() {
@@ -157,9 +171,12 @@ class InstallFlowActivity : Activity() {
 
     private fun startPolling() {
         persistentErrorVisible = false
-        browserOpened = false
-        status.text = "Comprobando $appName"
-        detail.text = "StoreAMO verifica el APK antes de enviarte a la descarga visible de Android."
+        artifactVerified = false
+        awaitingInstallPermission = false
+        permissionScreenOpened = false
+        installerOpened = false
+        status.text = "Descargando $appName"
+        detail.text = "La descarga y la verificación ocurren dentro de StoreAMO. No hace falta abrir GitHub."
         action.visibility = View.GONE
         close.visibility = View.GONE
         progress.visibility = View.VISIBLE
@@ -171,8 +188,8 @@ class InstallFlowActivity : Activity() {
     private fun startDirectFallback(originalReason: String) {
         if (fallbackDownloading || verifying || persistentErrorVisible) return
         fallbackDownloading = true
-        status.text = "Verificación alternativa"
-        detail.text = "$originalReason. Probando HTTPS directo antes de continuar."
+        status.text = "Descarga segura alternativa"
+        detail.text = "$originalReason. Probando HTTPS directo dentro de StoreAMO."
         progress.visibility = View.VISIBLE
         progress.isIndeterminate = true
         action.visibility = View.GONE
@@ -199,11 +216,11 @@ class InstallFlowActivity : Activity() {
                         if (isFinishing || persistentErrorVisible) return@runOnUiThread
                         if (percent == null) {
                             progress.isIndeterminate = true
-                            detail.text = "Verificación HTTPS directa en curso…"
+                            detail.text = "Descarga HTTPS directa en curso…"
                         } else {
                             progress.isIndeterminate = false
                             progress.progress = percent
-                            detail.text = "Verificación HTTPS · $percent%"
+                            detail.text = "Descarga HTTPS · $percent%"
                         }
                     }
                 }
@@ -212,7 +229,7 @@ class InstallFlowActivity : Activity() {
                 fallbackDownloading = false
                 result.onSuccess { verifyAndContinue() }
                     .onFailure { error ->
-                        showStaticError("No pude verificar la descarga oficial: ${error.message.orEmpty()}")
+                        showStaticError("No pude descargar el APK dentro de StoreAMO: ${error.message.orEmpty()}")
                     }
             }
         }.start()
@@ -236,25 +253,67 @@ class InstallFlowActivity : Activity() {
                     return@runOnUiThread
                 }
 
+                artifactVerified = true
                 progress.isIndeterminate = false
                 progress.progress = 100
                 status.text = "APK verificado"
-                detail.text = "SHA-256 correcto. StoreAMO no instala APK por sí misma: Android abrirá ahora la descarga oficial y visible."
-                openVerifiedUrl()
+                detail.text = "SHA-256 correcto. Abriendo el instalador de Android sin salir a GitHub."
+                continueToInstaller()
             }
         }.start()
     }
 
-    private fun openVerifiedUrl() {
+    private fun continueToInstaller() {
+        if (!artifactVerified || persistentErrorVisible) return
+        if (!DownloadInstaller.canInstallPackages(this)) {
+            showInstallPermissionRequired(autoOpen = true)
+            return
+        }
+        openVerifiedInstaller()
+    }
+
+    private fun showInstallPermissionRequired(autoOpen: Boolean) {
+        awaitingInstallPermission = true
+        progress.visibility = View.GONE
+        status.text = "Autorizar instalaciones"
+        detail.text = "Android necesita que autorices a StoreAMO como fuente de instalación. Es un permiso del sistema que se concede una sola vez y no elimina la confirmación final de cada APK."
+        action.apply {
+            text = "Autorizar en Android"
+            visibility = View.VISIBLE
+            setOnClickListener { openInstallPermission() }
+        }
+        close.visibility = View.VISIBLE
+        if (autoOpen && !permissionScreenOpened) openInstallPermission()
+    }
+
+    private fun openInstallPermission() {
         runCatching {
-            require(artifactUrl.startsWith("https://")) { "URL de descarga no segura" }
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(artifactUrl)).apply {
-                addCategory(Intent.CATEGORY_BROWSABLE)
-            }
-            startActivity(intent)
-            browserOpened = true
+            DownloadInstaller.openInstallPermission(this)
+            permissionScreenOpened = true
         }.onFailure { error ->
-            showStaticError("Android no pudo abrir la descarga oficial: ${error.message.orEmpty()}")
+            showStaticError("Android no pudo abrir el permiso de instalación: ${error.message.orEmpty()}")
+        }
+    }
+
+    private fun openVerifiedInstaller() {
+        if (!artifactVerified || !::apkFile.isInitialized) return
+        persistentErrorVisible = false
+        awaitingInstallPermission = false
+        permissionScreenOpened = false
+        progress.visibility = View.VISIBLE
+        progress.isIndeterminate = false
+        progress.progress = 100
+        status.text = "Listo para instalar"
+        detail.text = "StoreAMO ya verificó el APK. Android mostrará ahora su confirmación de instalación."
+        action.visibility = View.GONE
+        close.visibility = View.GONE
+
+        runCatching {
+            DownloadInstaller.openSystemInstaller(this, apkFile)
+            installerOpened = true
+        }.onFailure { error ->
+            installerOpened = false
+            showStaticError("No pude abrir el instalador de Android: ${error.message.orEmpty()}")
         }
     }
 
@@ -269,6 +328,8 @@ class InstallFlowActivity : Activity() {
 
     private fun success() {
         persistentErrorVisible = false
+        awaitingInstallPermission = false
+        installerOpened = false
         progress.visibility = View.VISIBLE
         progress.isIndeterminate = false
         progress.progress = 100
@@ -282,6 +343,8 @@ class InstallFlowActivity : Activity() {
         polling = false
         fallbackDownloading = false
         verifying = false
+        awaitingInstallPermission = false
+        permissionScreenOpened = false
         persistentErrorVisible = true
         handler.removeCallbacksAndMessages(null)
 
@@ -289,11 +352,15 @@ class InstallFlowActivity : Activity() {
         status.text = "No pude completar la instalación"
         detail.text = message.ifBlank { "Android no informó un detalle adicional." }
         action.apply {
-            text = "Abrir descarga oficial"
-            visibility = if (artifactUrl.startsWith("https://")) View.VISIBLE else View.GONE
+            text = if (artifactVerified) "Reintentar instalación" else "Reintentar descarga"
+            visibility = if (::apkFile.isInitialized && artifactUrl.startsWith("https://")) View.VISIBLE else View.GONE
             setOnClickListener {
                 persistentErrorVisible = false
-                openVerifiedUrl()
+                if (artifactVerified && apkFile.isFile) {
+                    continueToInstaller()
+                } else {
+                    startDirectFallback("Reintentando descarga")
+                }
             }
         }
         close.visibility = View.VISIBLE
@@ -311,7 +378,7 @@ class InstallFlowActivity : Activity() {
         }
 
         val eyebrow = TextView(this).apply {
-            text = "STOREAMO · DESCARGA SEGURA"
+            text = "STOREAMO · INSTALACIÓN SEGURA"
             setTextColor(COLOR_CYAN)
             textSize = 12f
             setTypeface(typeface, Typeface.BOLD)
