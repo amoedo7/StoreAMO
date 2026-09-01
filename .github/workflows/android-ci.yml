@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)"
-          test "$PATCH" -ge 82
+          test "$PATCH" -ge 83
           VERSION="0.4.3.${PATCH}"
           VERSION_CODE=$((430000 + PATCH))
           STORE="app/build/outputs/apk/release/app-release-unsigned.apk"
@@ -87,7 +87,8 @@ jobs:
           grep -q "package: name='com.desarrollamo.storeamo' versionCode='${VERSION_CODE}' versionName='${VERSION}'" /tmp/storeamo-badging.txt
           ! grep -q 'application-debuggable' /tmp/storeamo-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$STORE" | tee /tmp/storeamo-permissions.txt
-          ! grep -q 'REQUEST_INSTALL_PACKAGES\|REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES' /tmp/storeamo-permissions.txt
+          grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/storeamo-permissions.txt
+          ! grep -q 'REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS\|SYSTEM_ALERT_WINDOW\|BIND_ACCESSIBILITY_SERVICE' /tmp/storeamo-permissions.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$SEED" | tee /tmp/seed-badging.txt
           grep -q "package: name='com.desarrollamo.storeamo.seed' versionCode='1' versionName='0.0.1'" /tmp/seed-badging.txt
           ! grep -q 'application-debuggable' /tmp/seed-badging.txt
