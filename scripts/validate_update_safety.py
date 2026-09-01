@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression gate for StoreAMO's Play-Protect-safe update path."""
+"""Regression gate for StoreAMO's verified in-app update path."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,19 +26,20 @@ def main() -> None:
     manifest = read("app/src/main/AndroidManifest.xml")
     docs = read("docs/UPDATES_SCRIPTS_AND_DISCOVERY.md")
 
-    # Artifact integrity + transport remain mandatory before handoff.
+    # Artifact integrity + transport remain mandatory before installation handoff.
     require(installer, 'require(artifact.url.startsWith("https://"))', "https-only download")
     require(installer, "verifySha256", "sha256 verification")
     require(installer, "artifact.sizeBytes", "expected-size verification")
     require(flow, "DownloadInstaller.verifySha256", "verified artifact handoff")
 
-    # Play Protect safe mode: StoreAMO is not itself a sideload installer.
-    forbid(manifest, "android.permission.REQUEST_INSTALL_PACKAGES", "sideload install permission")
+    # Store-like install path: local verified file -> visible Android installer.
+    require(manifest, "android.permission.REQUEST_INSTALL_PACKAGES", "per-source install permission")
     forbid(manifest, "android.permission.REQUEST_DELETE_PACKAGES", "package delete permission")
-    require(flow, "Intent.CATEGORY_BROWSABLE", "browser handoff")
-    require(flow, "StoreAMO no instala APK por sí misma", "explicit safe-install contract")
-    forbid(flow, "DownloadInstaller.installWithSession(this, apkFile)", "direct PackageInstaller session")
-    forbid(flow, "DownloadInstaller.openInstallPermission", "unknown-sources settings request")
+    forbid(manifest, "android.permission.QUERY_ALL_PACKAGES", "broad package visibility permission")
+    require(flow, "DownloadInstaller.openInstallPermission(this)", "unknown-sources authorization")
+    require(flow, "DownloadInstaller.openSystemInstaller(this, apkFile)", "system installer handoff")
+    require(flow, "sin salir a GitHub", "no-browser install contract")
+    forbid(flow, "openVerifiedUrl", "external browser install handoff")
 
     # Fail closed on identity / rollback hazards in the verifier.
     require(installer, "archiveSigners != installedSigners", "signature continuity gate")
@@ -53,13 +54,12 @@ def main() -> None:
 
     # Package visibility remains narrow.
     require(manifest, '<package android:name="com.termux" />', "specific Termux visibility")
-    forbid(manifest, "android.permission.QUERY_ALL_PACKAGES", "broad package visibility permission")
 
     require(docs, "Comprueba package/application id y continuidad de firma", "documented signature continuity")
     require(docs, "Actualizar todo", "documented batch-update UX")
     require(docs, "Nunca descargar un APK arbitrario", "documented untrusted-artifact rule")
 
-    print("STOREAMO_UPDATE_SAFETY_PLAY_PROTECT_SAFE_OK")
+    print("STOREAMO_UPDATE_SAFETY_IN_APP_VERIFIED_OK")
 
 
 if __name__ == "__main__":
