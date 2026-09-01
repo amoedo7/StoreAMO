@@ -13,7 +13,7 @@
     "homepage": "https://github.com/amoedo7/StoreAMO",
     "privacy_url": "https://github.com/amoedo7/StoreAMO/blob/main/SECURITY.md",
     "screenshots": [],
-    "notes": "StoreAMO no se presenta como una app normal dentro de sí misma; su versión instalada vive en Ajustes/Actualizaciones. La línea estable 0.4.3.82 usa el package canónico y la identidad permanente de firma de producción."
+    "notes": "StoreAMO no se presenta como una app normal dentro de sí misma; su versión instalada vive en Ajustes/Actualizaciones. La 0.4.3.82 quedó ligada a una clave privada perdida. La 0.4.3.83 adopta explícitamente la identidad local preservada 7BD60F… y requiere una única reinstalación desde 0.4.3.82; las versiones posteriores deben conservar esta firma."
   },
   "release": {
     "provider": "github",
@@ -26,7 +26,7 @@
         "format": "apk",
         "application_id": "com.desarrollamo.storeamo",
         "min_os": "Android 8.0",
-        "signing_cert_sha256": "48f3671ed5f30d065ee4baac5cb509c4b59d3ff116d21e6ca81b21029862ab51"
+        "signing_cert_sha256": "7bd60fd751723041cf2802bea01fbd83700410a1fd2dd019cacbcd739cb72dcf"
       }
     ]
   },
