@@ -116,15 +116,6 @@ private fun openUrlV4(context: Context, url: String) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
-private fun openStoreAmoUpdateExternallyV4(context: Context, artifact: StoreArtifact) {
-    require(artifact.url.startsWith("https://")) { "URL de actualización no segura" }
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(artifact.url)).apply {
-        addCategory(Intent.CATEGORY_BROWSABLE)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    context.startActivity(intent)
-}
-
 private fun openInstalledV4(context: Context, packageName: String?) {
     if (packageName.isNullOrBlank()) return
     context.packageManager.getLaunchIntentForPackage(packageName)?.let { context.startActivity(it) }
@@ -187,6 +178,15 @@ private fun StoreAmoV4(resumeToken: Int) {
             else -> runCatching { DownloadInstaller.start(context, app.name, artifact) }
                 .onFailure { notice = "No pude iniciar la descarga: ${it.message.orEmpty()}" }
         }
+    }
+
+    fun startSelfUpdate(artifact: StoreArtifact) {
+        if (artifact.applicationId != BuildConfig.APPLICATION_ID) {
+            notice = "Actualización de StoreAMO bloqueada: el APK no declara el paquete esperado."
+            return
+        }
+        runCatching { DownloadInstaller.start(context, "StoreAMO", artifact) }
+            .onFailure { notice = "No pude iniciar la actualización interna de StoreAMO: ${it.message.orEmpty()}" }
     }
 
     LaunchedEffect(loading) {
@@ -302,12 +302,7 @@ private fun StoreAmoV4(resumeToken: Int) {
 
                 TabV4.UPDATES -> {
                     item { PageHeaderV4("VERSIONES", "Actualizaciones", "StoreAMO compara las apps instaladas con el catálogo y también revisa su propia versión.") }
-                    item {
-                        SelfUpdateCardV4(selfUpdate, selfLoading) { artifact ->
-                            runCatching { openStoreAmoUpdateExternallyV4(context, artifact) }
-                                .onFailure { notice = "No pude abrir la descarga externa de StoreAMO: ${it.message.orEmpty()}" }
-                        }
-                    }
+                    item { SelfUpdateCardV4(selfUpdate, selfLoading, ::startSelfUpdate) }
                     if (updates.isNotEmpty()) {
                         item { SectionV4("ACTUALIZACIONES", "Hay versiones nuevas") }
                         items(updates, key = { "update-${it.first.id}" }) { (app, _, _) ->
@@ -332,12 +327,7 @@ private fun StoreAmoV4(resumeToken: Int) {
                     }
                     item { ActionV4("Actualizar catálogo y valoraciones", "Trae versiones, ranking comunitario y estado actual.", "Actualizar", ::refreshAll) }
                     item { ActionV4("Apoyar DesarrollAMO", "Apoyo voluntario a desarrolladores independientes.", "Apoyar") { openUrlV4(context, SUPPORT_URL_V4) } }
-                    item {
-                        SelfUpdateCardV4(selfUpdate, selfLoading) { artifact ->
-                            runCatching { openStoreAmoUpdateExternallyV4(context, artifact) }
-                                .onFailure { notice = "No pude abrir la descarga externa de StoreAMO: ${it.message.orEmpty()}" }
-                        }
-                    }
+                    item { SelfUpdateCardV4(selfUpdate, selfLoading, ::startSelfUpdate) }
                 }
             }
             item { Spacer(Modifier.height(18.dp)) }
@@ -531,8 +521,8 @@ private fun SelfUpdateCardV4(latest: StoreArtifact?, loading: Boolean, onUpdate:
                 loading -> Text("Buscando versión nueva…", color = AmoCyan, fontSize = 10.sp)
                 latest != null -> {
                     Text("Disponible · ${latest.version}", color = AmoAmber, fontWeight = FontWeight.Black)
-                    Text("La actualización propia se abre fuera de StoreAMO para evitar fallos del instalador al reemplazar la app que lo está controlando.", color = AmoMuted, fontSize = 10.sp)
-                    Button(onClick = { onUpdate(latest) }, modifier = Modifier.fillMaxWidth()) { Text("Descargar actualización") }
+                    Text("StoreAMO descarga y verifica dentro de StoreAMO su propia actualización con el mismo flujo seguro usado para las apps. Android conserva la confirmación final.", color = AmoMuted, fontSize = 10.sp)
+                    Button(onClick = { onUpdate(latest) }, modifier = Modifier.fillMaxWidth()) { Text("Actualizar dentro de StoreAMO") }
                 }
                 else -> Text("StoreAMO está al día.", color = AmoGreen, fontSize = 10.sp)
             }

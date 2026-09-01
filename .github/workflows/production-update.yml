@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'release/trigger-v0.4.3.83'
+      - 'release/trigger-v0.4.3.84'
 
 permissions:
   contents: write
@@ -21,7 +21,6 @@ jobs:
       STOREAMO_RELEASE_KEY_PASSWORD: ${{ secrets.STOREAMO_RELEASE_KEY_PASSWORD }}
       STOREAMO_RELEASE_KEY_ALIAS: ${{ secrets.STOREAMO_RELEASE_KEY_ALIAS }}
       EXPECTED_CERT_SHA256: 7BD60FD751723041CF2802BEA01FBD83700410A1FD2DD019CACBCD739CB72DCF
-      PREVIOUS_CERT_SHA256: 48F3671ED5F30D065EE4BAAC5CB509C4B59D3FF116D21E6CA81B21029862AB51
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -37,14 +36,14 @@ jobs:
       - name: Validate source and release target
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)" = "83"
+          test "$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)" = "84"
           python scripts/validate_install_pipeline.py
-          if gh release view v0.4.3.83 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'v0.4.3.83 already exists' >&2
+          if gh release view v0.4.3.84 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.4.3.84 already exists' >&2
             exit 1
           fi
 
-      - name: Restore post-loss canonical signing identity from Actions secrets
+      - name: Restore canonical signing identity from Actions secrets
         run: |
           set -euo pipefail
           test -n "$STOREAMO_RELEASE_KEYSTORE_B64"
@@ -64,10 +63,7 @@ jobs:
           if ";base64," in raw[:160]:
               raw = raw.split(",", 1)[1]
           normalized = re.sub(r"\s+", "", raw)
-          try:
-              decoded = base64.b64decode(normalized, validate=True)
-          except Exception as exc:
-              raise SystemExit(f"STOREAMO_SIGNING_SECRET_INVALID_BASE64: {exc}")
+          decoded = base64.b64decode(normalized, validate=True)
           if not decoded:
               raise SystemExit("STOREAMO_SIGNING_SECRET_EMPTY_KEYSTORE")
           open(sys.argv[1], "wb").write(decoded)
@@ -76,18 +72,17 @@ jobs:
           chmod 600 "$KS"
           keytool -list -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" >/dev/null
           CERT="$(keytool -list -v -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          echo "Recovered signing certificate: $CERT"
           test "$CERT" = "$EXPECTED_CERT_SHA256"
           echo "STOREAMO_KEYSTORE=$KS" >> "$GITHUB_ENV"
 
-      - name: Build StoreAMO 0.4.3.83
+      - name: Build StoreAMO 0.4.3.84
         run: gradle :app:assembleRelease --stacktrace
 
-      - name: Sign and verify controlled migration boundary
+      - name: Sign and verify update continuity
         run: |
           set -euo pipefail
           IN="app/build/outputs/apk/release/app-release-unsigned.apk"
-          OUT="StoreAMO-0.4.3.83.apk"
+          OUT="StoreAMO-0.4.3.84.apk"
           test -s "$IN"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
             --ks "$STOREAMO_KEYSTORE" \
@@ -100,15 +95,14 @@ jobs:
           test "$NEW_CERT" = "$EXPECTED_CERT_SHA256"
 
           mkdir -p /tmp/previous
-          gh release download v0.4.3.82 --repo "$GITHUB_REPOSITORY" -p 'StoreAMO-0.4.3.82.apk' -D /tmp/previous
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs /tmp/previous/StoreAMO-0.4.3.82.apk | tee /tmp/old-cert.txt
+          gh release download v0.4.3.83 --repo "$GITHUB_REPOSITORY" -p 'StoreAMO-0.4.3.83.apk' -D /tmp/previous
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs /tmp/previous/StoreAMO-0.4.3.83.apk | tee /tmp/old-cert.txt
           OLD_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/old-cert.txt | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          test "$OLD_CERT" = "$PREVIOUS_CERT_SHA256"
-          test "$OLD_CERT" != "$NEW_CERT"
-          echo 'SIGNING_MIGRATION_REQUIRES_ONE_TIME_REINSTALL=1'
+          test "$OLD_CERT" = "$EXPECTED_CERT_SHA256"
+          test "$OLD_CERT" = "$NEW_CERT"
 
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$OUT" | tee /tmp/badging.txt
-          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430083' versionName='0.4.3.83'" /tmp/badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430084' versionName='0.4.3.84'" /tmp/badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$OUT" | tee /tmp/permissions.txt
           grep -q 'android.permission.INTERNET' /tmp/permissions.txt
           grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/permissions.txt
@@ -116,11 +110,11 @@ jobs:
           sha256sum "$OUT" > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
 
-      - name: Publish StoreAMO 0.4.3.83
+      - name: Publish StoreAMO 0.4.3.84
         run: |
           set -euo pipefail
-          gh release create v0.4.3.83 \
-            StoreAMO-0.4.3.83.apk SHA256SUMS.txt \
+          gh release create v0.4.3.84 \
+            StoreAMO-0.4.3.84.apk SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title 'StoreAMO 0.4.3.83' \
-            --notes 'StoreAMO 0.4.3.83 descarga los APK dentro de la tienda, verifica SHA-256 y abre directamente el instalador visible de Android; ya no manda al usuario a GitHub para instalar apps. IMPORTANTE: la clave privada de 0.4.3.82 se perdió y su backup quedó cifrado con una clave de recuperación externa no disponible. Esta release adopta de forma explícita la identidad local preservada 7BD60FD751723041CF2802BEA01FBD83700410A1FD2DD019CACBCD739CB72DCF. Android no permite actualizar en sitio desde 0.4.3.82: hace falta una única desinstalación/reinstalación de StoreAMO. A partir de 0.4.3.83 las actualizaciones vuelven a conservar la misma firma. StoreAMO no solicita permisos de borrado ni QUERY_ALL_PACKAGES.'
+            --title 'StoreAMO 0.4.3.84' \
+            --notes 'StoreAMO ya actualiza su propia APK usando el mismo flujo interno que las aplicaciones del catálogo: descarga dentro de StoreAMO, verificación SHA-256 y entrega del APK local verificado al instalador visible de Android. GitHub deja de ser parte de la experiencia de actualización. La confirmación final continúa perteneciendo a Android. Esta release conserva exactamente la identidad de firma permanente introducida en 0.4.3.83.'
