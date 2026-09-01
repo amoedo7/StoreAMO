@@ -78,6 +78,8 @@ import kotlinx.coroutines.withContext
 
 private const val SUPPORT_URL_V4 = "https://cobramo.netlify.app/"
 private const val TERMUX_PACKAGE_V4 = "com.termux"
+private const val TERMUX_FDROID_V4 = "https://f-droid.org/packages/com.termux"
+private const val TERMUX_PLAY_V4 = "https://play.google.com/store/apps/details?id=com.termux"
 private const val CLIMA_PACKAGE = "com.desarrollamo.climaamo"
 private const val CLIMA_LEGACY_VERSION = "0.2.0"
 private const val MIGRATION_PREFS = "storeamo_signature_migrations"
@@ -282,7 +284,16 @@ private fun StoreAmoV4(resumeToken: Int) {
                         }
                     }
 
-                    if (termuxInstalled) item { TermuxScriptGalleryCard(context) { notice = it } }
+                    item {
+                        if (termuxInstalled) {
+                            TermuxScriptGalleryCard(context) { notice = it }
+                        } else {
+                            TermuxScriptInstallCard(
+                                onFdroid = { openUrlV4(context, TERMUX_FDROID_V4) },
+                                onPlay = { openUrlV4(context, TERMUX_PLAY_V4) },
+                            )
+                        }
+                    }
 
                     if (upcoming.isNotEmpty()) {
                         item { SectionV4("LO QUE SE VIENE", "Proyectos en desarrollo") }

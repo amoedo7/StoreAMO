@@ -211,3 +211,20 @@ fun TermuxScriptGalleryCard(context: Context, onNotice: (String) -> Unit) {
         }
     }
 }
+
+@Composable
+fun TermuxScriptInstallCard(onFdroid: () -> Unit, onPlay: () -> Unit) {
+    Surface(shape = RoundedCornerShape(22.dp), color = AmoSurface) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("6 UTILITARIOS AMO", color = AmoCyan, fontSize = 9.sp, fontWeight = FontWeight.Black)
+            Text("Activá las herramientas compatibles con Android", fontSize = 20.sp, fontWeight = FontWeight.Black)
+            Text("Instalá Termux y volvé a StoreAMO. Vas a poder ejecutar MiDispositivo, MiRed, MiSistema, MiArchivos, MiAPI y DiagnosticoAMO con verificación SHA-256.", color = AmoMuted, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onFdroid, colors = ButtonDefaults.buttonColors(containerColor = AmoCyan, contentColor = AmoBackground)) {
+                    Text("Instalar desde F-Droid", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                }
+                OutlinedButton(onClick = onPlay) { Text("Google Play", fontSize = 10.sp) }
+            }
+        }
+    }
+}

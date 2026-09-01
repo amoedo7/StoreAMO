@@ -74,7 +74,7 @@ La Store principal usa números visibles, `versionCode` creciente y una identida
 
 ## Scripts AMO
 
-StoreAMO detecta únicamente `com.termux` como integración explícita. La galería ejecuta MiDispositivo, MiRed, MiSistema, MiArchivos, MiAPI y DiagnosticoAMO desde sus repositorios públicos, con fuente fijada por commit y SHA-256 verificado antes de cada ejecución.
+StoreAMO detecta únicamente `com.termux` como integración explícita. Si falta, muestra el acceso a F-Droid y Google Play; cuando está instalado, la galería ejecuta MiDispositivo, MiRed, MiSistema, MiArchivos, MiAPI y DiagnosticoAMO desde sus repositorios públicos, con fuente fijada por commit y SHA-256 verificado antes de cada ejecución.
 
 ## Repos relacionados
 
