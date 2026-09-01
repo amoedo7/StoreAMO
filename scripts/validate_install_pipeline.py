@@ -17,7 +17,7 @@ missing = [marker for marker in required_installer if marker not in installer]
 assert not missing, f"Missing installer markers: {missing}"
 
 required_flow = [
-    "startDirectFallback", "Verificación HTTPS", "DownloadInstaller.openInstallPermission(this)",
+    "startDirectFallback", "Descarga HTTPS", "DownloadInstaller.openInstallPermission(this)",
     "DownloadInstaller.openSystemInstaller(this, apkFile)", "Autorizar instalaciones",
     "APK verificado", "sin salir a GitHub", "targetInstalled", "Reintentar instalación",
 ]
