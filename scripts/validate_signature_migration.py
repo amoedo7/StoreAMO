@@ -15,18 +15,19 @@ assert canonical in installer
 assert 'DEPOSITAMO_PACKAGE = "com.desarrollamo.depositamo"' in installer
 assert "knownOneTimeSignatureMigration" in installer
 assert "StoreAMO no reemplaza firmas desconocidas" in installer
-assert "Intent.CATEGORY_BROWSABLE" in flow
-assert "StoreAMO no instala APK por sí misma" in flow
+assert "DownloadInstaller.openSystemInstaller(this, apkFile)" in flow
+assert "DownloadInstaller.openInstallPermission(this)" in flow
+assert "Intent.CATEGORY_BROWSABLE" not in flow
 assert "ELIMINAR VERSIÓN ANTERIOR Y CONTINUAR" not in flow
 assert "awaitingSignatureMigration" not in flow
 assert "DownloadInstaller.requestOfficialUninstall" not in flow
 assert "DownloadInstaller.installWithSession(this, apkFile)" not in flow
 
 patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
-assert patch >= 82
+assert patch >= 83
 assert 'PATCH="$(sed -n \'s/^storeamo.versionPatch=//p\' gradle.properties)"' in ci
-assert 'test "$PATCH" -ge 82' in ci
+assert 'test "$PATCH" -ge 83' in ci
 assert "assembleRelease" in ci
 assert "com.desarrollamo.storeamo' versionCode=" in ci
 assert "com.desarrollamo.storeamo.debug" not in ci
-print("STOREAMO_PRODUCTION_IDENTITY_04382_PLUS_OK")
+print("STOREAMO_PRODUCTION_IDENTITY_04383_PLUS_OK")

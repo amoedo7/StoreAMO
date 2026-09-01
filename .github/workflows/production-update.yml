@@ -1,0 +1,102 @@
+name: production-update
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'release/trigger-v0.4.3.83'
+
+permissions:
+  contents: write
+
+jobs:
+  sign-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STOREAMO_RELEASE_KEYSTORE_B64: ${{ secrets.STOREAMO_RELEASE_KEYSTORE_B64 }}
+      STOREAMO_RELEASE_STORE_PASSWORD: ${{ secrets.STOREAMO_RELEASE_STORE_PASSWORD }}
+      STOREAMO_RELEASE_KEY_PASSWORD: ${{ secrets.STOREAMO_RELEASE_KEY_PASSWORD }}
+      STOREAMO_RELEASE_KEY_ALIAS: ${{ secrets.STOREAMO_RELEASE_KEY_ALIAS }}
+      EXPECTED_CERT_SHA256: 48F3671ED5F30D065EE4BAAC5CB509C4B59D3FF116D21E6CA81B21029862AB51
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          gradle-version: '8.7'
+
+      - name: Validate source and release target
+        run: |
+          set -euo pipefail
+          test "$(sed -n 's/^storeamo.versionPatch=//p' gradle.properties)" = "83"
+          python scripts/validate_install_pipeline.py
+          if gh release view v0.4.3.83 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.4.3.83 already exists' >&2
+            exit 1
+          fi
+
+      - name: Restore canonical signing identity from Actions secrets
+        run: |
+          set -euo pipefail
+          test -n "$STOREAMO_RELEASE_KEYSTORE_B64"
+          test -n "$STOREAMO_RELEASE_STORE_PASSWORD"
+          test -n "$STOREAMO_RELEASE_KEY_PASSWORD"
+          test -n "$STOREAMO_RELEASE_KEY_ALIAS"
+          KS="$RUNNER_TEMP/storeamo-release.jks"
+          printf '%s' "$STOREAMO_RELEASE_KEYSTORE_B64" | base64 -d > "$KS"
+          chmod 600 "$KS"
+          keytool -list -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" >/dev/null
+          CERT="$(keytool -list -v -keystore "$KS" -storepass "$STOREAMO_RELEASE_STORE_PASSWORD" -alias "$STOREAMO_RELEASE_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test "$CERT" = "$EXPECTED_CERT_SHA256"
+          echo "STOREAMO_KEYSTORE=$KS" >> "$GITHUB_ENV"
+
+      - name: Build StoreAMO 0.4.3.83
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Sign and verify continuity
+        run: |
+          set -euo pipefail
+          IN="app/build/outputs/apk/release/app-release-unsigned.apk"
+          OUT="StoreAMO-0.4.3.83.apk"
+          test -s "$IN"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            --ks "$STOREAMO_KEYSTORE" \
+            --ks-key-alias "$STOREAMO_RELEASE_KEY_ALIAS" \
+            --ks-pass env:STOREAMO_RELEASE_STORE_PASSWORD \
+            --key-pass env:STOREAMO_RELEASE_KEY_PASSWORD \
+            --out "$OUT" "$IN"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$OUT" | tee /tmp/new-cert.txt
+          NEW_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/new-cert.txt | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test "$NEW_CERT" = "$EXPECTED_CERT_SHA256"
+
+          mkdir -p /tmp/previous
+          gh release download v0.4.3.82 --repo "$GITHUB_REPOSITORY" -p 'StoreAMO-0.4.3.82.apk' -D /tmp/previous
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs /tmp/previous/StoreAMO-0.4.3.82.apk | tee /tmp/old-cert.txt
+          OLD_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/old-cert.txt | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test "$OLD_CERT" = "$NEW_CERT"
+
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$OUT" | tee /tmp/badging.txt
+          grep -q "package: name='com.desarrollamo.storeamo' versionCode='430083' versionName='0.4.3.83'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$OUT" | tee /tmp/permissions.txt
+          grep -q 'android.permission.INTERNET' /tmp/permissions.txt
+          grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' /tmp/permissions.txt
+          ! grep -q 'REQUEST_DELETE_PACKAGES\|QUERY_ALL_PACKAGES\|PACKAGE_USAGE_STATS\|SYSTEM_ALERT_WINDOW\|BIND_ACCESSIBILITY_SERVICE' /tmp/permissions.txt
+          sha256sum "$OUT" > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Publish StoreAMO 0.4.3.83
+        run: |
+          set -euo pipefail
+          gh release create v0.4.3.83 \
+            StoreAMO-0.4.3.83.apk SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'StoreAMO 0.4.3.83' \
+            --notes 'Descarga de apps dentro de StoreAMO: el APK se descarga y verifica por SHA-256 dentro de la tienda y se entrega directamente al instalador visible de Android. Ya no se abre GitHub para instalar apps. Android conserva la autorización de fuente y la confirmación final. StoreAMO no solicita permisos de borrado ni QUERY_ALL_PACKAGES.'

@@ -12,10 +12,10 @@ panel = (root / "app/src/main/java/com/desarrollamo/storeamo/FeedbackPanelV3.kt"
 repo = (root / "app/src/main/java/com/desarrollamo/storeamo/data/FeedbackRepository.kt").read_text(encoding="utf-8")
 
 patch = int(next(line.split("=", 1)[1] for line in props.splitlines() if line.startswith("storeamo.versionPatch=")))
-assert patch >= 82
-assert "def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '82').toInteger()" in build
+assert patch >= 83
+assert "def releasePatch = (project.findProperty('storeamo.versionPatch') ?: '83').toInteger()" in build
 assert 'PATCH="$(sed -n \'s/^storeamo.versionPatch=//p\' gradle.properties)"' in ci
-assert 'test "$PATCH" -ge 82' in ci
+assert 'test "$PATCH" -ge 83' in ci
 assert "MainActivityV4::class.java" in bootstrap
 assert 'android:name=".MainActivityV4"' in manifest
 

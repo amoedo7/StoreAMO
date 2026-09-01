@@ -10,27 +10,29 @@ required_installer = [
     "COLUMN_BYTES_DOWNLOADED_SO_FAR",
     "COLUMN_TOTAL_SIZE_BYTES",
     "verifySha256",
+    "openInstallPermission",
+    "openSystemInstaller",
 ]
 missing = [item for item in required_installer if item not in installer]
-assert not missing, f"Missing verification markers: {missing}"
+assert not missing, f"Missing verification/install markers: {missing}"
 
 required_flow = [
-    "Verificando descarga · $percent%",
+    "Descargando dentro de StoreAMO · $percent%",
     "APK verificado",
-    "Intent.CATEGORY_BROWSABLE",
-    "openVerifiedUrl()",
+    "DownloadInstaller.openInstallPermission(this)",
+    "DownloadInstaller.openSystemInstaller(this, apkFile)",
     "targetInstalled()",
     "SHA-256 no coincide",
-    "StoreAMO no instala APK por sí misma",
+    "sin salir a GitHub",
 ]
 missing = [item for item in required_flow if item not in flow]
-assert not missing, f"Missing safe handoff markers: {missing}"
+assert not missing, f"Missing in-app install markers: {missing}"
 
 assert 'android:name=".InstallFlowActivity"' in manifest
 assert 'android:exported="false"' in manifest
-assert "android.permission.REQUEST_INSTALL_PACKAGES" not in manifest
+assert "android.permission.REQUEST_INSTALL_PACKAGES" in manifest
 assert "android.permission.REQUEST_DELETE_PACKAGES" not in manifest
-assert "openInstallPermission" not in flow
-assert "installWithSession(this, apkFile)" not in flow
+assert "openVerifiedUrl" not in flow
+assert "Intent.CATEGORY_BROWSABLE" not in flow
 
-print("STOREAMO_SAFE_HANDOFF_UPDATE_OK")
+print("STOREAMO_ONE_TAP_IN_APP_INSTALL_OK")
