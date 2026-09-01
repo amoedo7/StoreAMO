@@ -34,6 +34,7 @@ jobs:
           python scripts/validate_04375_community.py
           python scripts/validate_04379_self_update_recovery.py
           python scripts/validate_production_signing_setup.py
+          python scripts/validate_termux_gallery.py --remote
       - name: Validate seed boundary
         run: |
           set -euo pipefail

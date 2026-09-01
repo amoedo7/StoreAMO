@@ -48,32 +48,60 @@ data class AmoTermuxScript(
     val source: String,
     val sha256: String,
     val risk: String,
+    val arguments: String = "",
 )
 
 private val amoScripts = listOf(
     AmoTermuxScript(
         id = "midispositivo",
-        name = "MiDispositivo rápido",
+        name = "MiDispositivo",
         description = "Sistema, CPU, memoria, disco e IP local. Sin consulta externa.",
-        source = "https://raw.githubusercontent.com/amoedo7/IdeAMO/a1ca34a270a1dc10336c686b151b3d85266c09aa/scripts-inbox/storeamo/midispositivo.py",
-        sha256 = "8f3f5440f4589baae07983672d643d7bbc10935a8b45c1e1a0a89e18f61a9974",
+        source = "https://raw.githubusercontent.com/amoedo7/MiDispositivo/c4ea63614fb4084c2c05c5919386ae76a818f1d8/midispositivo.py",
+        sha256 = "077fd5c21fad1853d9bd75e46a1b8ebe46920f393bf268c2637f1598445e68d7",
         risk = "Solo lectura",
     ),
     AmoTermuxScript(
         id = "mired",
-        name = "MiRed rápido",
+        name = "MiRed",
         description = "Prueba DNS, TCP y HTTPS sin escanear dispositivos de tu red.",
-        source = "https://raw.githubusercontent.com/amoedo7/IdeAMO/a1ca34a270a1dc10336c686b151b3d85266c09aa/scripts-inbox/storeamo/mired.py",
-        sha256 = "69848beaa674b829ec7ec31ad379ee9f8127f14445672480a3b0beaba1c5ce9b",
+        source = "https://raw.githubusercontent.com/amoedo7/MiRed/1e8dc708ffc0dfdeb276325537abf4767f93ec5e/mired.py",
+        sha256 = "6e025febfd9af3a8e87bb68efa93ab68f0205e5a802bb2147aecb51261cc752d",
         risk = "Red · solo lectura",
     ),
     AmoTermuxScript(
         id = "misistema",
-        name = "MiSistema rápido",
+        name = "MiSistema",
         description = "Detecta Python, Node, Java, Git, shells y otras herramientas disponibles.",
-        source = "https://raw.githubusercontent.com/amoedo7/IdeAMO/a1ca34a270a1dc10336c686b151b3d85266c09aa/scripts-inbox/storeamo/misistema.py",
-        sha256 = "5d916952bb4d4d47d8734f95c84e6e56eeeed62759be1e9f28b24d85d8a9fc4a",
+        source = "https://raw.githubusercontent.com/amoedo7/MiSistema/e637b18346dfab56ebfd638aea08129edf621260/misistema.py",
+        sha256 = "c79d14cd3d08f58f5d3b44a1410efaa2184a5425df05345c9d9ccd832a058e17",
         risk = "Solo lectura",
+    ),
+    AmoTermuxScript(
+        id = "miarchivos",
+        name = "MiArchivos",
+        description = "Analiza hasta 5.000 archivos del hogar de Termux sin modificarlos.",
+        source = "https://raw.githubusercontent.com/amoedo7/MiArchivos/8d77e994c4b9a930b0e462d911e8600148a540c0/miarchivos.py",
+        sha256 = "0cb132da05e810068ce46df512989e34963dc5461b3bc89099717a64415c1056",
+        risk = "Archivos · solo lectura",
+        arguments = "--max-files 5000",
+    ),
+    AmoTermuxScript(
+        id = "miapi",
+        name = "MiAPI",
+        description = "Ejecuta una inspección HTTP/JSON real y muestra tiempos, cabeceras y estado.",
+        source = "https://raw.githubusercontent.com/amoedo7/MiAPI/0d75ea5b0ce460e657b39a7fec7e1bbc2cf4be61/miapi.py",
+        sha256 = "90930bcac2b85f290502ab877495e6cc271549ce30666f4df6a9e57d6373c987",
+        risk = "Red · lectura de ejemplo.com",
+        arguments = "https://example.com",
+    ),
+    AmoTermuxScript(
+        id = "diagnosticoamo",
+        name = "DiagnosticoAMO",
+        description = "Genera un diagnóstico demostrativo con puntuación y recomendaciones.",
+        source = "https://raw.githubusercontent.com/amoedo7/DiagnosticoAMO/a58162357d3549a19a4ca6e012a56e40a1af50ab/diagnosticoamo.py",
+        sha256 = "b4b74beb37ce4ab54180e96a22b41136c9a24f410ee6b41f48a0c11f07a524f8",
+        risk = "Local · datos de demostración",
+        arguments = "--demo",
     ),
 )
 
@@ -114,7 +142,7 @@ private fun runScriptInTermux(context: Context, script: AmoTermuxScript): Result
         [ "${'$'}ACTUAL" = "${'$'}EXPECTED" ] || { echo 'BLOQUEADO: SHA-256 no coincide'; exit 65; }
         echo 'Integridad OK · ejecutando…'
         echo
-        "${'$'}PY" "${'$'}TMP"
+        "${'$'}PY" "${'$'}TMP" ${script.arguments}
         echo
         echo 'StoreAMO · ejecución terminada'
     """.trimIndent()

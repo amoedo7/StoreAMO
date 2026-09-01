@@ -74,7 +74,7 @@ La Store principal usa números visibles, `versionCode` creciente y una identida
 
 ## Scripts AMO
 
-StoreAMO detecta únicamente `com.termux` como integración explícita. La galería de scripts se alimenta de piezas revisadas que comienzan en `IdeAMO`, con descripción, origen e integridad antes de ofrecer ejecución.
+StoreAMO detecta únicamente `com.termux` como integración explícita. La galería ejecuta MiDispositivo, MiRed, MiSistema, MiArchivos, MiAPI y DiagnosticoAMO desde sus repositorios públicos, con fuente fijada por commit y SHA-256 verificado antes de cada ejecución.
 
 ## Repos relacionados
 
