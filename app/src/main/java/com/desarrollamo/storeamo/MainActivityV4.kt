@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.desarrollamo.storeamo.data.CatalogRepository
 import com.desarrollamo.storeamo.data.FeedbackRepository
 import com.desarrollamo.storeamo.data.SelfUpdateRepository
+import com.desarrollamo.storeamo.ecosystem.EcosystemHub
 import com.desarrollamo.storeamo.model.StoreApp
 import com.desarrollamo.storeamo.model.StoreArtifact
 import com.desarrollamo.storeamo.theme.AmoAmber
@@ -87,7 +88,7 @@ private const val MIGRATION_APP = "pending_app_id"
 private const val MIGRATION_VERSION = "pending_target_version"
 
 private enum class TabV4(val label: String, val glyph: String) {
-    HOME("Inicio", "◆"), APPS("Apps", "▦"), UPDATES("Actualiz.", "↻"), SETTINGS("Ajustes", "⚙")
+    HOME("Inicio", "◆"), ECOSYSTEM("Ecosistema", "◫"), APPS("Apps", "▦"), UPDATES("Actualiz.", "↻"), SETTINGS("Ajustes", "⚙")
 }
 
 class MainActivityV4 : ComponentActivity() {
@@ -301,6 +302,11 @@ private fun StoreAmoV4(resumeToken: Int) {
                             AppCardV4(app, context, verifiedOnly, ratings[app.id]) { selected = app }
                         }
                     }
+                }
+
+                TabV4.ECOSYSTEM -> {
+                    item { PageHeaderV4("SUPER APP", "Ecosistema", "Herramientas y aplicaciones que migran al mismo APK de StoreAMO.") }
+                    item { EcosystemHub() }
                 }
 
                 TabV4.APPS -> {
