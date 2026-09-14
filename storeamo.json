@@ -19,6 +19,7 @@
     "provider": "github",
     "repo": "amoedo7/StoreAMO",
     "channel": "stable",
+    "version_code": "430087",
     "assets": [
       {
         "platform": "android",
